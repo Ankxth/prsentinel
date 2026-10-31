@@ -411,17 +411,11 @@ def run_child_here(job):
     afterwards matters, or pytest's own capture is left pointing at a string.
     """
     saved_out = sys.stdout
-<<<<<<< HEAD
     buffer = io.StringIO()
     sys.stdout = buffer
     try:
         code = A.run_once(job)
         return code, buffer.getvalue()
-=======
-    try:
-        code = A.run_once(job)
-        return code, sys.__stdout__.getvalue()
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
     finally:
         sys.stdout = saved_out
 

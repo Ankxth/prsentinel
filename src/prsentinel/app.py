@@ -46,7 +46,6 @@ reuse_tests set, which is the switch that skips writing tests. The page labels
 those results "saved" and generated ones "generated", and never mixes the two
 words, because the difference is the whole point of showing both.
 
-<<<<<<< HEAD
 GitHub links
 ------------
 A third way in: paste a link to a GitHub pull request or commit. The parent
@@ -57,8 +56,6 @@ then sends one result holding every file's report. Fetching happens here in the
 parent, before anything is written, so a bad link or a private repository is
 refused with a sentence and leaves nothing behind.
 
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 Keys
 ----
 The app never prints, returns or logs a key, and never reads one into a
@@ -84,10 +81,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from prsentinel import config
-<<<<<<< HEAD
 from prsentinel import github_fetch as gh
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 from prsentinel import pipeline as pl
 
 # Where things are. Everything is worked out from this file's own location, so
@@ -105,13 +99,10 @@ REPORTS = PROJECT / "reports"
 # it rather than guessing.
 MARKER = ".prsentinel-demo-owned"
 
-<<<<<<< HEAD
 # How long the app waits, after a run's process has ended, for that run's files
 # to be removed before it accepts the next run anyway.
 CLEANUP_WAIT_SECONDS = 60
 
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 # Every run's name starts with this, and nothing is ever deleted again unless it
 # does.
 RUN_PREFIX = "demo_"
@@ -128,7 +119,6 @@ DAILY_LIMIT_MESSAGE = ("No result: the AI allowance is used up. "
 TIMEOUT_MESSAGE = ("No result: the run took longer than 5 minutes and was "
                    "stopped. That says nothing about the code.")
 
-<<<<<<< HEAD
 
 def timeout_message(seconds) -> str:
     """The timeout sentence for a run with its own limit, such as a GitHub link."""
@@ -138,8 +128,6 @@ def timeout_message(seconds) -> str:
     return (f"No result: the run took longer than {minutes} minutes and was "
             f"stopped. That says nothing about the code.")
 
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 # How many finished runs to keep around so a page that opens its stream a moment
 # late still finds its run.
 KEEP_RUNS = 8
@@ -309,7 +297,6 @@ class LineWriter:
     would read half a line and think it was a whole one.
     """
 
-<<<<<<< HEAD
     def __init__(self, marker, out=None):
         self.marker = marker
         self.held = ""
@@ -317,11 +304,6 @@ class LineWriter:
         # object. sys.__stdout__ can point at a handle that a test runner (or
         # Windows console capture) has already closed.
         self.out = out if out is not None else sys.stdout
-=======
-    def __init__(self, marker):
-        self.marker = marker
-        self.held = ""
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 
     def write(self, text):
         self.held += text
@@ -331,13 +313,8 @@ class LineWriter:
         return len(text)
 
     def _send(self, line):
-<<<<<<< HEAD
         self.out.write(f"{self.marker} {line}\n")
         self.out.flush()
-=======
-        sys.__stdout__.write(f"{self.marker} {line}\n")
-        sys.__stdout__.flush()
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 
     def flush(self):
         if self.held:
@@ -345,16 +322,10 @@ class LineWriter:
             self.held = ""
 
 
-<<<<<<< HEAD
 def emit(out, marker: str, text: str) -> None:
     """Write one marked line to the stream the child started with."""
     out.write(f"{marker} {text}\n")
     out.flush()
-=======
-def emit(marker: str, text: str) -> None:
-    sys.__stdout__.write(f"{marker} {text}\n")
-    sys.__stdout__.flush()
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 
 
 def run_once(job: dict) -> int:
@@ -363,7 +334,6 @@ def run_once(job: dict) -> int:
     The AI is only reached if the job says to reach it, and never through the
     second provider, so a result is either from one model or from none.
     """
-<<<<<<< HEAD
     if job.get("files"):
         return run_github(job)
 
@@ -371,11 +341,6 @@ def run_once(job: dict) -> int:
     real = sys.stdout
 
     sys.stdout = LineWriter("P", real)
-=======
-    saved = job.get("mode") == "saved"
-
-    sys.stdout = LineWriter("P")
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
     try:
         report = pl.run_pipeline(
             job["before"],
@@ -388,16 +353,11 @@ def run_once(job: dict) -> int:
             mutation=bool(job.get("mutation")),
         )
     except pl.DailyLimitStop:
-<<<<<<< HEAD
         emit(real, "F", DAILY_LIMIT_MESSAGE)
-=======
-        emit("F", DAILY_LIMIT_MESSAGE)
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
         return 0
     except Exception as error:                      # noqa: BLE001
         # Said out loud rather than swallowed. A demo showing a stack trace is
         # embarrassing; a demo showing nothing at all is worse.
-<<<<<<< HEAD
         emit(real, "E", f"{type(error).__name__}: {error}")
         return 0
     finally:
@@ -453,15 +413,6 @@ def run_github(job: dict) -> int:
     emit(real, "R", json.dumps({"app_mode": "generated",
                           "github": job.get("github") or {},
                           "files": results}))
-=======
-        emit("E", f"{type(error).__name__}: {error}")
-        return 0
-    finally:
-        sys.stdout.flush()
-        sys.stdout = sys.__stdout__
-
-    emit("R", json.dumps(tidy(report, saved)))
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
     return 0
 
 
@@ -489,18 +440,13 @@ def tidy(report: dict, saved: bool) -> dict:
 class Job:
     """One run, and the queue its output arrives on."""
 
-<<<<<<< HEAD
     def __init__(self, job_id, name, mode, folder, scratch, parts=(),
                  timeout=None):
-=======
-    def __init__(self, job_id, name, mode, folder, scratch):
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
         self.id = job_id
         self.name = name
         self.mode = mode
         self.folder = folder
         self.scratch = scratch
-<<<<<<< HEAD
         # Extra (name, folder) pairs a GitHub run uses, one per changed file.
         # Each is taken away exactly like the main name and folder.
         self.parts = list(parts)
@@ -511,9 +457,6 @@ class Job:
         # files are already gone, and a new run can never start while the last
         # one is still deleting a folder with the same name.
         self.cleaned = threading.Event()
-=======
-        self.events = queue.Queue()
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 
     def put(self, event):
         self.events.put(event)
@@ -538,24 +481,16 @@ class Runner:
         with self.lock:
             return self.current is not None
 
-<<<<<<< HEAD
     def start(self, name, mode, folder, scratch, job_file, parts=(),
               timeout=None) -> Job:
-=======
-    def start(self, name, mode, folder, scratch, job_file) -> Job:
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
         with self.lock:
             if self.current is not None:
                 raise HTTPException(
                     status_code=409,
                     detail=("A run is already going. Wait for it to finish, "
                             "then press Run again."))
-<<<<<<< HEAD
             job = Job(uuid.uuid4().hex[:12], name, mode, folder, scratch,
                       parts=parts, timeout=timeout)
-=======
-            job = Job(uuid.uuid4().hex[:12], name, mode, folder, scratch)
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
             self.current = job
 
         # The child inherits this machine's environment so that tempfile and the
@@ -564,12 +499,9 @@ class Runner:
         # switch alone is doing the work.
         child_env = dict(os.environ)
         child_env["GEMINI_API_KEY"] = ""
-<<<<<<< HEAD
         # The GitHub fetch happens here in the parent, so the child never needs
         # the GitHub token either.
         child_env["GITHUB_TOKEN"] = ""
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
         child_env["PYTHONIOENCODING"] = "utf-8"
 
         child = subprocess.Popen(
@@ -621,16 +553,12 @@ class Runner:
 
         # This runs whether or not anybody is listening, so closing the tab
         # halfway through a run leaves nothing behind either.
-<<<<<<< HEAD
         try:
             clean_up(job.name, job.folder, job.scratch)
             for part_name, part_folder in job.parts:
                 clean_up(part_name, part_folder, None)
         finally:
             job.cleaned.set()
-=======
-        clean_up(job.name, job.folder, job.scratch)
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 
         job.put({"type": "done"})
         job.finish()
@@ -643,7 +571,6 @@ class Runner:
         one-run-at-a-time lock.
         """
         try:
-<<<<<<< HEAD
             child.wait(timeout=job.timeout)
         except subprocess.TimeoutExpired:
             child.kill()
@@ -656,12 +583,6 @@ class Runner:
         # the tidy-up, with a ceiling so a stuck pipe can never hold the lock
         # for ever.
         job.cleaned.wait(timeout=CLEANUP_WAIT_SECONDS)
-=======
-            child.wait(timeout=config.APP_RUN_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired:
-            child.kill()
-            job.put({"type": "stopped", "message": TIMEOUT_MESSAGE})
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 
         with self.lock:
             if self.current is job:
@@ -755,11 +676,8 @@ def list_demos():
     return {"demos": demo_cases(),
             "timeout_seconds": config.APP_RUN_TIMEOUT_SECONDS,
             "max_pasted_bytes": config.APP_MAX_PASTED_BYTES,
-<<<<<<< HEAD
             "github_timeout_seconds": config.APP_GITHUB_RUN_TIMEOUT_SECONDS,
             "github_max_files": config.GITHUB_MAX_FILES,
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
             "safety_sentence": SAFETY_SENTENCE,
             "model": config.GROQ_MODEL}
 
@@ -808,13 +726,10 @@ def _start_one_run(body: dict):
                     "or switch to Saved tests, which needs no key."))
 
     job_id = uuid.uuid4().hex[:12]
-<<<<<<< HEAD
 
     if body.get("github"):
         return _start_github_run(body, mode, mutation, job_id)
 
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
     demo = pick_demo(wanted) if wanted else None
 
     if wanted and demo is None:
@@ -873,7 +788,6 @@ def _start_one_run(body: dict):
     return {"run_id": job.id, "name": name, "mode": mode, "mutation": mutation}
 
 
-<<<<<<< HEAD
 def _start_github_run(body: dict, mode: str, mutation: bool, job_id: str):
     """Fetch a GitHub pull request or commit, write its pairs, start the child.
 
@@ -955,8 +869,6 @@ def _start_github_run(body: dict, mode: str, mutation: bool, job_id: str):
             "mutation": mutation, "files": [one["path"] for one in files]}
 
 
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 @app.get("/api/stream")
 def stream(run_id: str):
     """Server-sent events: progress as it arrives, then the result, then done.

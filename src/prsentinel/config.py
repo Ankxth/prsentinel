@@ -6,7 +6,6 @@ Two rules for this file:
    model later we only change them here.
 2. API keys are NEVER written in the code. They are read from environment
    variables instead, so they stay out of version control.
-<<<<<<< HEAD
 
 Keys can also be kept in a file called .env in the project root (the folder
 that holds pyproject.toml). That file is listed in .gitignore, so it never goes
@@ -62,11 +61,6 @@ def _load_env_file(path: Path = ENV_FILE) -> None:
 
 
 _load_env_file()
-=======
-"""
-
-import os
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 
 
 def _int_from_env(name: str, default: int) -> int:
@@ -179,7 +173,6 @@ APP_MAX_PASTED_BYTES = _int_from_env("PRSENTINEL_APP_MAX_PASTED_BYTES", 60000)
 
 
 # ---------------------------------------------------------------------------
-<<<<<<< HEAD
 # Checking a GitHub pull request or commit from the demo app
 # ---------------------------------------------------------------------------
 
@@ -196,8 +189,6 @@ APP_GITHUB_RUN_TIMEOUT_SECONDS = _int_from_env(
 
 
 # ---------------------------------------------------------------------------
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 # How creative the AI is allowed to be.
 # ---------------------------------------------------------------------------
 
@@ -229,7 +220,6 @@ def get_gemini_api_key() -> str:
     return os.environ.get("GEMINI_API_KEY", "").strip()
 
 
-<<<<<<< HEAD
 def get_github_token() -> str:
     """Return the GitHub token, or an empty string if it is not set.
 
@@ -239,8 +229,6 @@ def get_github_token() -> str:
     return os.environ.get("GITHUB_TOKEN", "").strip()
 
 
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 def has_groq_key() -> bool:
     """Return True if a Groq API key is available."""
     return bool(get_groq_api_key())
@@ -248,8 +236,4 @@ def has_groq_key() -> bool:
 
 def has_gemini_key() -> bool:
     """Return True if a Gemini API key is available."""
-<<<<<<< HEAD
     return bool(get_gemini_api_key())
-=======
-    return bool(get_gemini_api_key())
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6

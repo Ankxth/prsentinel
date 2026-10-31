@@ -37,11 +37,8 @@ prsentinel/
     classifier.py        <- real bug, bad test, or flaky
     classifier_eval.py   <- scores the classifier on nine known answers
     pipeline.py          <- all of it, with one command
-<<<<<<< HEAD
     app.py               <- the demo web app
     github_fetch.py      <- turns a GitHub pull request link into file pairs
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
   .github/workflows/
     prsentinel.yml      <- scores a pull request and leaves one comment
     tests.yml           <- the whole test suite, on Linux, with no secrets
@@ -70,10 +67,7 @@ prsentinel/
   generated_tests/           <- written by the pipeline, not kept in git
   reports/                   <- written by the pipeline
   reports/real_cases/        <- the three real-case evaluation reports, saved
-<<<<<<< HEAD
   demo_github/               <- a small project to put on GitHub and score
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
   requirements.txt
   NOTES_COVERUP.md           <- why CoverUp is not the baseline, and what stopped it
   RESULTS.md                 <- every number this project produced, and where from
@@ -116,7 +110,6 @@ variables. Open PowerShell and set them for your user account:
 
 Then close PowerShell and open it again so the new variables are picked up.
 
-<<<<<<< HEAD
 **Or use a `.env` file.** Put a file called `.env` in the project root (next to
 `pyproject.toml`) with one `NAME=value` per line:
 
@@ -130,8 +123,6 @@ GITHUB_TOKEN=optional, see "Checking a GitHub pull request" below
 environment wins over the file. `.env` is in `.gitignore`, so it is never
 committed.
 
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 To check they arrived:
 
 ```powershell
@@ -189,7 +180,6 @@ actually run here. This test suite does not turn warnings into errors, so the
 one line is harmless. Moving to `httpx2` would mean a different package and two
 more dependencies, which is not worth it for a demo.
 
-<<<<<<< HEAD
 ## Checking a GitHub pull request from the web app
 
 The app's picker has a third choice, **A GitHub pull request or commit...**.
@@ -221,8 +211,6 @@ not count). For more, or for private repositories, add a `GITHUB_TOKEN` to
 access is enough. It is only ever sent to GitHub in a request header, and the
 child process that runs the tests never receives it.
 
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 ## Running on a pull request
 
 Two workflows, in `.github/workflows/`. Neither of them has ever run yet, so

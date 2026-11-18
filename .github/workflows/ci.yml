@@ -1,0 +1,36 @@
+name: CI
+
+# Runs the frozen v1 test suite on every push and pull request. No secrets are
+# used, and no test makes a live model call. New jobs for backend, frontend and
+# action are added here as those parts are built.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  v1-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: bench/v1-capstone
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install v1
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -e .
+
+      - name: Run the v1 test suite
+        run: python -m pytest -q

@@ -20,7 +20,7 @@ from app.core.auth import current_user
 from app.core.config import Settings, get_settings
 from app.core.run_token import current_run
 from app.db.models.accounts import Repo, User
-from app.db.models.context import ContextFile
+from app.db.models.context import ContextEdge, ContextFile
 from app.db.models.runs import Run
 from app.db.session import get_db
 from app.services.context_engine import store
@@ -232,6 +232,7 @@ class ContextOut(BaseModel):
     skipped_files: int
     repo_facts: dict
     file_count: int
+    edges: dict[str, int]
     files: list[ContextFileOut]
 
 
@@ -253,6 +254,13 @@ def get_context(
     latest = db.scalar(
         select(Run.sha).where(Run.repo_id == repo.id).order_by(Run.started_at.desc()).limit(1)
     )
+    edge_counts = {"resolved": 0, "external": 0, "unresolved": 0}
+    for edge_status, number in db.execute(
+        select(ContextEdge.status, func.count())
+        .where(ContextEdge.repo_id == repo.id, ContextEdge.kind == "call")
+        .group_by(ContextEdge.status)
+    ):
+        edge_counts[edge_status] = number
     return ContextOut(
         status=state.status,
         built_from_sha=state.built_from_sha,
@@ -262,6 +270,7 @@ def get_context(
         skipped_files=state.skipped_files,
         repo_facts=state.repo_facts or {},
         file_count=count or 0,
+        edges=edge_counts,
         files=[
             ContextFileOut(
                 path=row.path,

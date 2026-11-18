@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, inspect
 
 from app.core.config import get_settings
 from app.db.models.accounts import Repo, User
-from app.db.models.context import ContextFile, ContextState
+from app.db.models.context import ContextEdge, ContextFile, ContextState
 from app.db.models.runs import Run
 from tests.conftest import bearer
 from tests.test_migrations import alembic_config
@@ -116,6 +116,57 @@ def test_first_build_asks_for_everything_then_completes(run, db, registered_repo
     assert row.symbols[0]["name"] == "add"
     assert row.calls == [{"in": "add", "name": "len", "line": 2}]
     assert row.built_from_sha == "a" * 40
+
+
+def calling(path, symbol, name, calls_name, **extra):
+    """Facts for a file with one function `symbol` that calls `calls_name`."""
+    return facts(
+        path,
+        symbols=[{"name": symbol, "kind": "function", "signature": "()", "doc": "",
+                  "lines": [1, 2], "decorators": [], "bases": [], "is_fixture": False}],
+        imports=extra.pop("imports", []),
+        calls=[{"in": symbol, "name": calls_name, "line": 2}],
+        **extra,
+    )
+
+
+def test_commit_builds_the_call_graph_and_rebuilds_it_on_the_next_commit(
+    client, make_github_token, registered_repo, db
+):
+    first = Run_(client, make_github_token, run_id=1)
+    lib = facts("lib.py", symbols=[
+        {"name": "helper", "kind": "function", "signature": "()", "doc": "", "lines": [1, 2],
+         "decorators": [], "bases": [], "is_fixture": False}], calls=[], imports=[])
+    app = calling("app.py", "main", "main", "helper",
+                  imports=[{"module": "lib", "name": "helper", "asname": None, "level": 0}])
+    build(first, [lib, app])
+    first.finish()
+    db.expire_all()
+    edges = {(e.src_path, e.kind, e.target_name): e for e in db.query(ContextEdge)}
+    call_edge = edges[("app.py", "call", "helper")]
+    assert (call_edge.status, call_edge.resolved) == ("resolved", True)
+    assert (call_edge.dst_path, call_edge.dst_symbol) == ("lib.py", "helper")
+    assert call_edge.line == 2 and call_edge.built_from_sha == "a" * 40
+    assert edges[("app.py", "import", "lib.helper")].dst_path == "lib.py"
+
+    # lib.py loses `helper`: app.py did not change, yet its call must stop resolving
+    second = Run_(client, make_github_token, run_id=2, sha="b" * 40)
+    lib2 = facts("lib.py", content="v2", symbols=[], calls=[], imports=[])
+    build(second, [lib2, app])
+    db.expire_all()
+    rows = db.query(ContextEdge).filter_by(src_path="app.py", kind="call").all()
+    assert len(rows) == 1  # rebuilt, not duplicated
+    assert (rows[0].status, rows[0].dst_path) == ("unresolved", None)  # no stale link survives
+    assert rows[0].built_from_sha == "b" * 40
+
+
+def test_dashboard_shows_edge_counts(client, make_github_token, make_token, registered_repo):
+    first = Run_(client, make_github_token, run_id=1)
+    build(first, [facts("a.py")])  # one call to len() -> external
+    response = client.get(
+        f"/v1/repos/{registered_repo.id}/context", headers=alice_headers(make_token, registered_repo)
+    )
+    assert response.json()["edges"] == {"resolved": 0, "external": 1, "unresolved": 0}
 
 
 def test_later_run_only_needs_changed_files_and_drops_removed_ones(

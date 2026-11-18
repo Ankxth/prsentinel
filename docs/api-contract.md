@@ -123,7 +123,8 @@ server asked for and its hash must match the manifest (422 otherwise). A batch i
 
 `POST /v1/runs/{run_id}/context/commit` with `{"pytest_config": false}` (a hint the runner knows).
 Response: `{"status": "complete", "built_from_sha": "...", "partial": false, "python_files": 12}`.
-409 lists how many files are still missing. Call it only after every requested file was uploaded.
+409 lists how many files are still missing. Call it only after every requested file was uploaded. The commit also rebuilds the repo's call graph
+(`context_edges`) from all stored files; nothing extra is sent for that.
 
 ### Reserved for other features (not built yet)
 
@@ -146,6 +147,6 @@ its request and response shapes when you build it.
 ## Dashboard endpoints (browser only, not for the Action)
 
 `GET /v1/repos/{id}/runs` (latest 50), `GET /v1/runs/{id}` and `GET /v1/repos/{id}/context`
-(status `empty` | `building` | `complete`, `built_from_sha`, `latest_run_sha`, `partial`, `repo_facts`, up to
-1000 files with symbol and call counts). Auth is the user's Supabase sign-in,
+(status `empty` | `building` | `complete`, `built_from_sha`, `latest_run_sha`, `partial`, `repo_facts`,
+`edges` = number of calls per state `{resolved, external, unresolved}`, up to 1000 files with symbol and call counts). Auth is the user's Supabase sign-in,
 and only the owner's runs are visible (others get 404).

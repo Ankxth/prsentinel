@@ -102,6 +102,11 @@ class ContextEdge(Base):
     target_name: Mapped[str] = mapped_column(String(300))
     dst_path: Mapped[str | None] = mapped_column(String(500))
     dst_symbol: Mapped[str | None] = mapped_column(String(300))
-    # False means we could not find the target. Shown as unresolved, never guessed.
+    # False means we could not find the target inside this repo. Never guessed.
     resolved: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # resolved   points at one place in this repo
+    # external   a Python built-in, the standard library or an installed package (not in the repo)
+    # unresolved could not be pinned to one place (variable calls, ambiguous names, ...)
+    status: Mapped[str] = mapped_column(String(12), default="unresolved", server_default="unresolved")
+    line: Mapped[int | None] = mapped_column(Integer)
     built_from_sha: Mapped[str] = mapped_column(String(64))

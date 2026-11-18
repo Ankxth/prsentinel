@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     # Protects the free AI quotas.
     max_repos_per_user: int = 5
 
+    # Context map limits (feature C). Past these the map is marked partial, never silently cut.
+    max_context_files: int = 500
+    max_context_batch_files: int = 100
+    max_context_upload_bytes: int = 2_000_000
+
     groq_api_key: SecretStr | None = None
     gemini_api_key: SecretStr | None = None
 

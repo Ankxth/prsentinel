@@ -96,6 +96,35 @@ Response
 The Action posts `comment_markdown` on the pull request. If a comment containing `comment_marker`
 already exists, it **updates that comment** instead of adding a new one.
 
+### Context map (feature C). Auth: run token, run must still be `running`
+
+The runner keeps the server's code map of the repository up to date in three calls. Only facts are
+sent (names, signatures, first docstring lines, imports, call names), never function bodies. The
+fact format is documented at the top of `action/runner/facts.py`.
+
+`POST /v1/runs/{run_id}/context/manifest`
+```json
+{"files": {"cart.py": "<sha256 hex>", "tests/test_cart.py": "<sha256 hex>"},
+ "total_files": 236, "skipped_files": 0}
+```
+Response: `{"need": ["cart.py"], "unchanged": 1, "removed": 0, "max_batch_files": 100}`.
+`files` lists every `.py` file the runner will describe (at most 500 paths, hashes are 64 hex
+characters). Files the server holds that are not in the list are deleted. `skipped_files > 0` marks
+the map as partial. 409 if another run is updating the same repo (a stale or finished build is taken over).
+
+`POST /v1/runs/{run_id}/context/files`
+```json
+{"files": [{"path": "cart.py", "hash": "<sha256 hex>", "is_test": false, "parse_error": null,
+            "symbols": [], "imports": [], "calls": [{"in": "add", "name": "len", "line": 2}],
+            "dynamic_calls": 0}]}
+```
+At most `max_batch_files` files and 2 MB per request (413 above that). Every path must be one the
+server asked for and its hash must match the manifest (422 otherwise). A batch is saved all or nothing.
+
+`POST /v1/runs/{run_id}/context/commit` with `{"pytest_config": false}` (a hint the runner knows).
+Response: `{"status": "complete", "built_from_sha": "...", "partial": false, "python_files": 12}`.
+409 lists how many files are still missing. Call it only after every requested file was uploaded.
+
 ### Reserved for other features (not built yet)
 
 | Endpoint | Owner | Purpose |
@@ -116,5 +145,7 @@ its request and response shapes when you build it.
 
 ## Dashboard endpoints (browser only, not for the Action)
 
-`GET /v1/repos/{id}/runs` (latest 50) and `GET /v1/runs/{id}`. Auth is the user's Supabase sign-in,
+`GET /v1/repos/{id}/runs` (latest 50), `GET /v1/runs/{id}` and `GET /v1/repos/{id}/context`
+(status `empty` | `building` | `complete`, `built_from_sha`, `latest_run_sha`, `partial`, `repo_facts`, up to
+1000 files with symbol and call counts). Auth is the user's Supabase sign-in,
 and only the owner's runs are visible (others get 404).

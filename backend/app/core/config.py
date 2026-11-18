@@ -43,6 +43,17 @@ class Settings(BaseSettings):
     # open API allows only 60 lookups per hour per server address.
     github_token: SecretStr | None = None
 
+    # The Action asks GitHub for an identity token for this audience; we only accept that audience.
+    github_oidc_audience: str = "prsentinel"
+
+    # Signs the short-lived run token handed to the Action after it starts a run. Make it a long
+    # random string (for example: python -c "import secrets; print(secrets.token_urlsafe(48))").
+    run_token_secret: SecretStr | None = None
+    run_token_ttl_seconds: int = 3600
+
+    # Sent to the Action as a hint of how many changed functions to submit.
+    max_functions_per_run: int = 50
+
     # Protects the free AI quotas.
     max_repos_per_user: int = 5
 

@@ -2,7 +2,7 @@
 
 The one shared briefing for every chat and contributor working on PRSentinel.
 Read this first. Then read only the feature card(s) you are working on.
-Last updated: 2026-11-18 (sign-in tested, delete account added)
+Last updated: 2026-11-18 (run lifecycle and API contract added)
 
 Plain words first, industry terms in (brackets).
 
@@ -68,7 +68,7 @@ Ownership is per feature, not per person. When you start a feature, set its stat
 - **No job queue in v1.** Work is short request/response steps. The Action retries while a free Render server wakes (sleeps after 15 min idle, about 1 min to wake). A pinger hits `/health` every ~10 min.
 - **Action uploads the source it needs** (changed files, size-capped). The server does not depend on GitHub API limits; it only confirms a repo is public (cached).
 - **Context lives in Postgres (JSONB).** No vector database at the start.
-- **Server and runner talk through a versioned JSON contract** kept in `docs/api-contract.md` (to be created by feature B; see section 5).
+- **Server and runner talk through a versioned JSON contract** kept in `docs/api-contract.md` (also a Project doc, `claude/api-contract.md`; see section 5).
 
 ---
 
@@ -81,14 +81,18 @@ prsentinel/
   backend/      FastAPI + uvicorn (BUILT: skeleton with /health, settings, tests)
     app/
       main.py            create_app() factory; add new routers here
-      api/               one router file per area (health.py, me.py, repos.py exist)
+      api/               one router file per area (health.py, me.py, repos.py, runs.py exist)
+      contract.py        CONTRACT_VERSION (Action <-> server)
       core/config.py     all settings (pydantic-settings); add new settings here
       core/auth.py       Supabase token check; get_claims, current_user dependencies
+      core/oidc.py       GitHub identity token check; github_claims, current_repo dependencies
+      core/run_token.py  our per-run token; create_run_token, current_run dependency
+      services/comment.py  builds the PR comment text (untrusted text goes in code spans)
       services/github.py repo lookup on GitHub's open API (strict name check, one fixed host)
       db/                base.py (Base), session.py (engine, get_db), models/ (one file per area)
       services/          (planned) context engine, llm router, classifier, runs
       agents/            (planned) vuln_proof/
-    migrations/          Alembic: env.py, versions/ (0001 empty baseline, 0002 users + repos)
+    migrations/          Alembic: env.py, versions/ (0001 empty baseline, 0002 users + repos, 0003 runs)
     alembic.ini
     tests/
     requirements.txt     pinned
@@ -96,7 +100,7 @@ prsentinel/
   frontend/     React + Vite + TypeScript (BUILT: GitHub sign-in, repos page; src/lib/api.ts, src/components/)
   action/       (planned) action.yml + runner/ (Python package run in the user's repo)
   bench/        evaluation data and scripts; v1 frozen under bench/v1-capstone/
-  docs/         context.md (this file), api-contract.md (planned), research notes
+  docs/         context.md (this file), api-contract.md (BUILT, Action <-> server), research notes
   .github/workflows/ci.yml   jobs: v1-suite, backend, frontend
 ```
 
@@ -157,7 +161,8 @@ These are the seams. Change one only through the Requests board (section 11), be
 - `get_context_pack(repo_id, file, function, token_budget) -> ContextPack` (provided by C, used by D and E)
 - `llm.complete(purpose, messages, budget_key) -> LLMResult` (provided by F, used by C, D, E)
 - `current_user` (BUILT, `app.core.auth`): FastAPI dependency for dashboard endpoints; returns the signed-in `User` row (creates it on first sign-in). Use it on every dashboard endpoint, and filter queries by `user.id` (see `app/api/repos.py` for the pattern, and `tests/test_repos.py` for the cross-user tests to copy).
-- `current_repo(auth) -> Repo` auth dependency for Action calls (OIDC); to be provided by B in `core/oidc.py`.
+- `current_repo` (BUILT, `app.core.oidc`): dependency for `POST /v1/runs` only; checks GitHub's identity token and returns the registered public `Repo`.
+- `current_run` (BUILT, `app.core.run_token`): dependency for EVERY Action-facing endpoint after the run starts (`/generate`, `/results`, `/agent/step`, `/finish`). The URL must contain `{run_id}`. Returns the `Run` row only if the caller holds that run's token; get the repo with `db.get(Repo, run.repo_id)`. Pattern and tests: `app/api/runs.py`, `tests/test_runs.py`. Test helpers `make_github_token` and `registered_repo` are in `tests/conftest.py`.
 - Test helpers (BUILT, `tests/conftest.py`): `client`, `make_token`, `github` (fake GitHub), in-memory database. New dashboard endpoints should be tested with these.
 
 **5.5 Contract file:** request/response shapes for 5.1 live in `docs/api-contract.md` with a `contract_version` number. Action and server both send/check it. Additive changes only without a version bump.
@@ -247,7 +252,7 @@ Update your row when you start, finish, or get blocked. Statuses: `not started`,
 |---|---|---|
 | Foundation (repo layout, CI, skeletons) | done | v1 frozen in `bench/v1-capstone`; backend `/health`, frontend skeleton, CI jobs added. Not pushed to GitHub yet |
 | A Accounts and repositories | in progress | Backend done: tables applied to Supabase, token check, `GET /v1/me`, `GET/POST/DELETE /v1/repos` with tests (55 backend tests pass). Frontend sign-in and repos pages work end to end (user tested: sign in, add, remove, rows appear and disappear in Supabase). Delete-my-account built (59 backend tests). Left: setup-page workflow snippet (waits for B), cache the public check |
-| B The Action | not started | Needs OIDC verification and `docs/api-contract.md` |
+| B The Action | in progress | Server side built: GitHub token check, `runs` table (migration `0003`), run token, `POST /v1/runs`, `POST /v1/runs/{id}/finish`, dashboard run views, `docs/api-contract.md` (94 backend tests). Migration 0003 not yet applied to Supabase. Next: Render deploy, then the Action and runner, then the runs list in the dashboard |
 | C Context engine | not started | Needs `context_files` and `context_edges` tables |
 | D Test generation and diagnosis | not started | Reuse map in section 4 |
 | E Vulnerability module | not started | E1 scanners first, E3 agent later |
@@ -280,7 +285,8 @@ Each card: purpose, depends on, provides, key files, first steps, done when.
 - **Depends on:** A (`repos`), contract file; OIDC verification on the server.
 - **Provides:** `runs` table; `current_repo` dependency (OIDC); the five endpoints in 5.1; `action/action.yml`; `action/runner/`; `docs/api-contract.md`; PR comment posting (H).
 - **Key files:** `backend/app/core/oidc.py`, `backend/app/api/runs.py`, `backend/app/services/run_service.py`, `action/`.
-- **First steps:** OIDC verify with tests (including fork behaviour); `POST /v1/runs` returning changed functions; Action v0 that calls it from the demo repo and prints the result; then comment posting; retry logic for a waking server.
+- **Done so far (server):** GitHub token check, `runs` table, run token, start and finish endpoints, dashboard run views, contract doc.
+- **Next steps:** deploy to Render (the Action needs a live URL); Action v0 (`action/action.yml` + stdlib-only runner: find changed functions with v1's `diff_extractor`, start run with retry for a waking server, finish, post or update the PR comment found by `comment_marker`); runs list and real workflow snippet in the dashboard; verify fork-PR behaviour in a real test.
 - **Done when (P1 exit):** opening a PR on the demo repo produces a comment and the run is visible on the live dashboard. Test step runs with a scrubbed environment (no token, no secrets); "could not run" is reported distinctly.
 
 ### C. Context engine
@@ -331,6 +337,7 @@ Format: `- [open] 2026-11-18 | from <feature> to <feature> | what and why`
 
 Newest first. Add a line when you change a contract, a table, a convention, or finish a milestone.
 
+- 2026-11-18 | B | Run lifecycle on the server. Table `runs` (migration `0003`, RLS owner-read; cascades from `repos`): repo_id, github_run_id, run_attempt (unique together per repo), sha, ref, event, status (`running` | `completed` | `failed` | `could_not_run`), started_at, finished_at, `summary` JSON (changed_files, changed_functions, reason; D and E may add keys). Endpoints `POST /v1/runs` (GitHub token), `POST /v1/runs/{id}/finish` (run token), `GET /v1/repos/{id}/runs`, `GET /v1/runs/{id}` (dashboard). Shapes in `docs/api-contract.md` (contract_version 1). Repo is found by GitHub's numeric `repository_id`; a renamed repo is updated automatically. New settings: `RUN_TOKEN_SECRET` (required for runs; generate a long random string), `RUN_TOKEN_TTL_SECONDS`, `GITHUB_OIDC_AUDIENCE` (default `prsentinel`), `MAX_FUNCTIONS_PER_RUN`. Feature D and E: add your endpoints to `docs/api-contract.md` and protect them with `current_run`.
 - 2026-11-18 | A | `DELETE /v1/me` returns `{data_deleted, login_removed}`; deletes the user row (repos and anything cascading from them go too) and, if the optional `SUPABASE_SECRET_KEY` is set, the Supabase login record. Frontend "Delete my account" section. Rule: user-data tables must cascade from `users`. Dashboard dark-mode CSS fixed; Vite upgraded to 8 (0 audit warnings, needs Node 20.19+ or 22.12+).
 - 2026-11-18 | A | Frontend: GitHub sign-in, header with sign-out, repos page (add with AI opt-in checkbox, list, remove). Needs `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` in `frontend/.env.local`. New dependency `@supabase/supabase-js`. Shared helper: `apiFetch` in `frontend/src/lib/api.ts`.
 - 2026-11-18 | A | Login and repos backend. `GET /v1/me`; `GET/POST /v1/repos`, `GET/DELETE /v1/repos/{id}`. POST body is `{full_name, llm_opt_in}` and `llm_opt_in` must be true. Repo must be public (checked on GitHub's open API), one GitHub repo can belong to only one account, cap `MAX_REPOS_PER_USER` (default 5), other users' repos answer 404. New settings: `SUPABASE_URL` (set), `SUPABASE_JWT_SECRET` (only for old HS256 projects), `GITHUB_TOKEN` (optional, raises GitHub lookup limit), `MAX_REPOS_PER_USER`. New dependency: `pyjwt[crypto]`. Tokens are verified by signature, issuer, audience and expiry against Supabase's public keys.

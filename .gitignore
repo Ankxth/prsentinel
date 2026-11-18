@@ -24,3 +24,7 @@ heldback_runs.log
 
 # Separate repo that lives next to this one (the demo target for the Action).
 prsentinel-demo/
+
+node_modules/
+dist/
+.env.local

@@ -1,31 +1,60 @@
 import { useEffect, useState } from "react";
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-
-type Health = { status: string; service: string; version: string; env: string };
+import ReposPage from "./components/ReposPage";
+import SignIn from "./components/SignIn";
+import { getMe, type Me } from "./lib/api";
+import { supabase } from "./lib/supabase";
+import { useSession } from "./lib/useSession";
 
 export default function App() {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { session, loading } = useSession();
+  const [me, setMe] = useState<Me | null>(null);
+  const [meError, setMeError] = useState<string | null>(null);
 
+  // Once signed in, ask the backend who we are. This also creates the user row on first visit.
   useEffect(() => {
-    fetch(`${API_URL}/health`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(setHealth)
-      .catch((e: Error) => setError(e.message));
-  }, []);
+    setMe(null);
+    setMeError(null);
+    if (!session) return;
+    getMe()
+      .then(setMe)
+      .catch((e: Error) => setMeError(e.message));
+  }, [session]);
+
+  if (!supabase) {
+    return (
+      <main>
+        <section className="card">
+          <h1>PRSentinel</h1>
+          <p className="error">
+            Login is not configured. Fill in VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY
+            in frontend/.env.local, then restart the dev server.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  if (loading) return <main><p className="muted">Loading…</p></main>;
+  if (!session) return <main><SignIn /></main>;
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", maxWidth: 560, margin: "4rem auto" }}>
-      <h1>PRSentinel</h1>
-      <p>Backend status:</p>
-      {health && (
-        <p>
-          ✅ {health.service} v{health.version} ({health.env})
-        </p>
+    <main>
+      <header>
+        <strong>PRSentinel</strong>
+        <div className="who">
+          {me?.avatar_url && <img src={me.avatar_url} alt="" width={28} height={28} />}
+          <span>{me?.github_login}</span>
+          <button onClick={() => supabase!.auth.signOut()}>Sign out</button>
+        </div>
+      </header>
+      {meError ? (
+        <section className="card">
+          <p className="error">{meError}</p>
+          <button onClick={() => supabase!.auth.signOut()}>Sign out and try again</button>
+        </section>
+      ) : (
+        me && <ReposPage />
       )}
-      {error && <p>❌ Cannot reach the backend: {error}</p>}
-      {!health && !error && <p>Checking…</p>}
     </main>
   );
 }

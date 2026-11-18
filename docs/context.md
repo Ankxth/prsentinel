@@ -173,7 +173,7 @@ One table has one owning feature. Others read it through that feature's service 
 | `llm_usage` | F | tokens, provider, latency, purpose |
 
 Rules (apply everywhere):
-- Migrations with **SQLAlchemy + Alembic** (decided). Put a model in `backend/app/db/models/<area>.py` and import it in `models/__init__.py`, then `alembic revision --autogenerate -m "..."` from `backend/`, read the generated file, and apply with `alembic upgrade head`. One migration per change; never edit an applied migration; keep a single head (a test checks this). Needs `DATABASE_URL`. Use Supabase's direct connection string for migrations.
+- Migrations with **SQLAlchemy + Alembic** (decided). Put a model in `backend/app/db/models/<area>.py` and import it in `models/__init__.py`, then `alembic revision --autogenerate -m "..."` from `backend/`, read the generated file, and apply with `alembic upgrade head`. One migration per change; never edit an applied migration; keep a single head (a test checks this). Needs `DATABASE_URL`. Use Supabase's **Session pooler** connection string (the Direct string is IPv6-only by default and often fails on home networks and free hosts).
 - Supabase **Row Level Security** so users only read their own repos' rows. The backend uses the service key, so **every backend query that returns user data must filter by owner explicitly and have a test proving another user cannot read it.**
 - Store little source: symbols, short snippets, summaries. Not whole repos.
 
@@ -241,7 +241,7 @@ Update your row when you start, finish, or get blocked. Statuses: `not started`,
 | Feature | Status | Notes |
 |---|---|---|
 | Foundation (repo layout, CI, skeletons) | done | v1 frozen in `bench/v1-capstone`; backend `/health`, frontend skeleton, CI jobs added. Not pushed to GitHub yet |
-| A Accounts and repositories | not started | Alembic is ready; needs a Supabase project (`DATABASE_URL`) |
+| A Accounts and repositories | in progress | `users` and `repos` models + migration `0002` written, tests pass; not yet applied to Supabase. Next: Supabase JWT verification, repos endpoints |
 | B The Action | not started | Needs OIDC verification and `docs/api-contract.md` |
 | C Context engine | not started | Needs `context_files` and `context_edges` tables |
 | D Test generation and diagnosis | not started | Reuse map in section 4 |
@@ -323,6 +323,8 @@ Format: `- [open] 2026-11-18 | from <feature> to <feature> | what and why`
 
 Newest first. Add a line when you change a contract, a table, a convention, or finish a milestone.
 
+- 2026-11-18 | A | Tables `users` (id = Supabase auth id, github_login, github_id, avatar_url, is_admin) and `repos` (owner_user_id FK cascade, github_id unique, github_owner, github_name, default_branch, is_public, llm_opt_in default false, settings JSON) added in migration `0002` with RLS (own-rows read policies). Models in `app/db/models/accounts.py`. Other features: a repo row is found from an Action run through `repos.github_id` or `github_owner`/`github_name`.
+- 2026-11-18 | Foundation | Supabase project created; baseline `0001` applied to it. Connection string convention changed to the Session pooler.
 - 2026-11-18 | Foundation | Alembic chosen and set up: `app/db/{base,session}.py`, `migrations/` with empty baseline `0001`, `alembic.ini`, 7 migration tests; added sqlalchemy, alembic, psycopg to `requirements.txt`. No tables yet.
 - 2026-11-18 | Foundation | Backend skeleton (`/health`, settings, CORS, 6 tests), frontend skeleton (Vite + React + TS calling `/health`), CI jobs `backend` and `frontend`, shared `context.md` created.
 - 2026-11-18 | Foundation | v1 frozen under `bench/v1-capstone/` (996 tests pass); tag `v1-capstone`; v2 root layout and READMEs added; conflict markers removed from `.gitignore`.

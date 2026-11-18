@@ -1,6 +1,3 @@
-"""Import every model module here so Alembic autogenerate can find the tables.
+"""Import every model module here so Alembic autogenerate can find the tables."""
 
-Example, once a feature adds its tables:
-
-    from app.db.models import users, repos  # noqa: F401
-"""
+from app.db.models import accounts  # noqa: F401

@@ -268,7 +268,8 @@ Each card: purpose, depends on, provides, key files, first steps, done when.
 - **Depends on:** Supabase project (Auth + Postgres); Alembic is already set up.
 - **Provides:** `users`, `repos` tables; `current_user` dependency; `GET/POST /v1/repos`, `DELETE /v1/repos/{id}`; repo cap and LLM opt-in flag; setup page data (workflow file text).
 - **Key files:** `backend/app/api/repos.py`, `backend/app/core/auth.py`, `backend/app/db/`, `frontend/src` login and repos pages.
-- **First steps:** `users`/`repos` models and first migration (DB session and Alembic already exist); Supabase JWT verification; add-repo endpoint with public check (SSRF-safe, cached).
+- **Done so far:** `users`/`repos` tables, Supabase token verification, `/v1/me`, repo endpoints with public check.
+- **Next steps:** frontend login (supabase-js GitHub sign-in) and repos pages; setup-page workflow snippet; delete-my-data; cache the public check.
 - **Done when:** a user signs in locally, adds a public repo, sees the workflow snippet, deletes the repo and their data; tests prove one user cannot read another's repos.
 
 ### B. The Action

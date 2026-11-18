@@ -2,7 +2,7 @@
 
 The one shared briefing for every chat and contributor working on PRSentinel.
 Read this first. Then read only the feature card(s) you are working on.
-Last updated: 2026-11-18
+Last updated: 2026-11-18 (Alembic added)
 
 Plain words first, industry terms in (brackets).
 
@@ -37,7 +37,7 @@ Master plan (full detail, roadmap, risks): Project doc `claude/prsentinel-v2-pro
 | C | Context engine | Per-repo code map (files, symbols, call graph, summaries), updated per commit, context packs |
 | D | Test generation and failure diagnosis | Diff-aware tests, old/new runs, labels, reruns, rule classifier, mutation check, repair |
 | E | Vulnerability module | E1 scanners, E2 AI triage, E3 Proof Agent (canary + sink interception, linter, judge) |
-| F | LLM management | Router (Groq then Gemini), budgets, caching, usage table. Cross-cutting, see section 6 |
+| F | LLM management | Router (Groq then Gemini), budgets, caching, usage table. Cross-cutting, see card F in section 10 |
 | G | Dashboard | React pages: repos, runs, findings, context explorer, settings, public report, badge |
 | H | Notifications | One PR comment updated in place, job summary |
 | I | Admin and operations | Admin page, logs, error tracking, pinger |
@@ -83,9 +83,11 @@ prsentinel/
       main.py            create_app() factory; add new routers here
       api/               one router file per area (health.py exists)
       core/config.py     all settings (pydantic-settings); add new settings here
-      db/                (planned) models, session, Alembic migrations
+      db/                base.py (Base), session.py (engine, get_db), models/ (one file per area)
       services/          (planned) context engine, llm router, classifier, runs
       agents/            (planned) vuln_proof/
+    migrations/          Alembic: env.py, versions/ (baseline 0001 is empty)
+    alembic.ini
     tests/
     requirements.txt     pinned
     .env.example
@@ -131,7 +133,7 @@ Python 3.10+ works locally; CI uses 3.13. Node 22.
 
 ## 5. Interfaces between features (the contracts)
 
-These are the seams. Change one only through the Requests board (section 10), because other features depend on it.
+These are the seams. Change one only through the Requests board (section 11), because other features depend on it.
 
 **5.1 Action-facing API (auth: GitHub OIDC)**
 - `POST /v1/runs` start a run for (repo, sha, event); returns run id and the changed functions to test
@@ -171,7 +173,7 @@ One table has one owning feature. Others read it through that feature's service 
 | `llm_usage` | F | tokens, provider, latency, purpose |
 
 Rules (apply everywhere):
-- Migrations with **SQLAlchemy + Alembic** (pending decision, section 8). One migration per change; never edit an applied migration.
+- Migrations with **SQLAlchemy + Alembic** (decided). Put a model in `backend/app/db/models/<area>.py` and import it in `models/__init__.py`, then `alembic revision --autogenerate -m "..."` from `backend/`, read the generated file, and apply with `alembic upgrade head`. One migration per change; never edit an applied migration; keep a single head (a test checks this). Needs `DATABASE_URL`. Use Supabase's direct connection string for migrations.
 - Supabase **Row Level Security** so users only read their own repos' rows. The backend uses the service key, so **every backend query that returns user data must filter by owner explicitly and have a test proving another user cannot read it.**
 - Store little source: symbols, short snippets, summaries. Not whole repos.
 
@@ -219,16 +221,16 @@ Settled:
 | Hosting | Free tiers first (Render + Supabase), pinger, $7/mo always-on later. Do not use Render free Postgres |
 | Layout | `backend/`, `frontend/`, `action/`, `bench/`, `docs/`; v1 frozen in `bench/v1-capstone/` |
 | Proof Agent | Canary + sink interception, linter, deterministic judge, at most 5 attempts per finding |
+| Migrations | **Alembic** (SQLAlchemy 2). RLS policies are written as raw SQL inside migrations. Decided 2026-11-18 |
 
 Still open (decide before the feature that needs it):
-1. Migrations: Alembic (recommended) vs Supabase SQL files. Needed before the first table.
-2. Licence: MIT or Apache-2.0.
-3. Dashboard hosting: Render static vs Vercel/Cloudflare Pages.
-4. Scanner set: Bandit + pip-audit + secrets scanner (recommended); Semgrep optional.
-5. Agent oracle: sink interception (recommended) vs real execution.
-6. Fix-check in v1 or future work.
-7. Attempt limit: 5 (recommended).
-8. Name: keep "PRSentinel" or rename.
+1. Licence: MIT or Apache-2.0.
+2. Dashboard hosting: Render static vs Vercel/Cloudflare Pages.
+3. Scanner set: Bandit + pip-audit + secrets scanner (recommended); Semgrep optional.
+4. Agent oracle: sink interception (recommended) vs real execution.
+5. Fix-check in v1 or future work.
+6. Attempt limit: 5 (recommended).
+7. Name: keep "PRSentinel" or rename.
 
 ---
 
@@ -239,7 +241,7 @@ Update your row when you start, finish, or get blocked. Statuses: `not started`,
 | Feature | Status | Notes |
 |---|---|---|
 | Foundation (repo layout, CI, skeletons) | done | v1 frozen in `bench/v1-capstone`; backend `/health`, frontend skeleton, CI jobs added. Not pushed to GitHub yet |
-| A Accounts and repositories | not started | Needs Supabase project and decision 8.1 |
+| A Accounts and repositories | not started | Alembic is ready; needs a Supabase project (`DATABASE_URL`) |
 | B The Action | not started | Needs OIDC verification and `docs/api-contract.md` |
 | C Context engine | not started | Needs `context_files` and `context_edges` tables |
 | D Test generation and diagnosis | not started | Reuse map in section 4 |
@@ -259,10 +261,10 @@ Each card: purpose, depends on, provides, key files, first steps, done when.
 
 ### A. Accounts and repositories
 - **Purpose:** users sign in with GitHub, add/remove public repos, see setup instructions.
-- **Depends on:** Supabase project (Auth + Postgres), migration tool decision.
+- **Depends on:** Supabase project (Auth + Postgres); Alembic is already set up.
 - **Provides:** `users`, `repos` tables; `current_user` dependency; `GET/POST /v1/repos`, `DELETE /v1/repos/{id}`; repo cap and LLM opt-in flag; setup page data (workflow file text).
 - **Key files:** `backend/app/api/repos.py`, `backend/app/core/auth.py`, `backend/app/db/`, `frontend/src` login and repos pages.
-- **First steps:** DB session and Alembic; `users`/`repos` migration; Supabase JWT verification; add-repo endpoint with public check (SSRF-safe, cached).
+- **First steps:** `users`/`repos` models and first migration (DB session and Alembic already exist); Supabase JWT verification; add-repo endpoint with public check (SSRF-safe, cached).
 - **Done when:** a user signs in locally, adds a public repo, sees the workflow snippet, deletes the repo and their data; tests prove one user cannot read another's repos.
 
 ### B. The Action
@@ -321,6 +323,7 @@ Format: `- [open] 2026-11-18 | from <feature> to <feature> | what and why`
 
 Newest first. Add a line when you change a contract, a table, a convention, or finish a milestone.
 
+- 2026-11-18 | Foundation | Alembic chosen and set up: `app/db/{base,session}.py`, `migrations/` with empty baseline `0001`, `alembic.ini`, 7 migration tests; added sqlalchemy, alembic, psycopg to `requirements.txt`. No tables yet.
 - 2026-11-18 | Foundation | Backend skeleton (`/health`, settings, CORS, 6 tests), frontend skeleton (Vite + React + TS calling `/health`), CI jobs `backend` and `frontend`, shared `context.md` created.
 - 2026-11-18 | Foundation | v1 frozen under `bench/v1-capstone/` (996 tests pass); tag `v1-capstone`; v2 root layout and READMEs added; conflict markers removed from `.gitignore`.
 

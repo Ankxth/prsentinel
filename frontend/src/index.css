@@ -4,7 +4,7 @@
   background: #f6f8fa;
 }
 body { margin: 0; }
-main { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
 header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .who { display: flex; align-items: center; gap: 8px; }
 .who img { border-radius: 50%; }
@@ -23,7 +23,18 @@ a { color: #0969da; }
 .small { font-size: 0.85rem; }
 .error { color: #cf222e; }
 ul.repos { list-style: none; padding: 0; margin: 0; }
-ul.repos li { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid #d0d7de; }
+ul.repos li { padding: 10px 0; border-top: 1px solid #d0d7de; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.actions { display: flex; gap: 8px; }
+.panel { margin-top: 12px; padding: 4px 0 0; }
+.panel h3 { margin: 12px 0 6px; font-size: 1rem; }
+pre.code { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 10px 12px; overflow-x: auto; font-size: 0.8rem; margin: 0 0 8px; }
+table.runs { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+table.runs th, table.runs td { text-align: left; padding: 6px 8px 6px 0; border-top: 1px solid #d0d7de; vertical-align: top; }
+.badge { padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; background: #eaeef2; }
+.badge.completed { background: #dafbe1; color: #1a7f37; }
+.badge.failed, .badge.could_not_run { background: #ffebe9; color: #cf222e; }
+.badge.running { background: #fff8c5; color: #9a6700; }
 
 /* Dark mode. Kept at the end so it overrides the light rules above. */
 @media (prefers-color-scheme: dark) {
@@ -37,4 +48,10 @@ ul.repos li { display: flex; justify-content: space-between; align-items: center
   .muted { color: #8b949e; }
   .error { color: #ff7b72; }
   ul.repos li { border-top-color: #30363d; }
+  pre.code { background: #0d1117; border-color: #30363d; }
+  table.runs th, table.runs td { border-top-color: #30363d; }
+  .badge { background: #30363d; }
+  .badge.completed { background: #12361f; color: #56d364; }
+  .badge.failed, .badge.could_not_run { background: #4a1d1d; color: #ff7b72; }
+  .badge.running { background: #3d2e00; color: #e3b341; }
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { addRepo, deleteRepo, listRepos, type Repo } from "../lib/api";
+import RepoPanel from "./RepoPanel";
 
 export default function ReposPage() {
   const [repos, setRepos] = useState<Repo[] | null>(null);
@@ -8,6 +9,7 @@ export default function ReposPage() {
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -82,15 +84,23 @@ export default function ReposPage() {
         <ul className="repos">
           {repos?.map((repo) => (
             <li key={repo.id}>
-              <div>
-                <a href={`https://github.com/${repo.full_name}`} target="_blank" rel="noreferrer">
-                  {repo.full_name}
-                </a>
-                <span className="muted small"> · branch {repo.default_branch}</span>
+              <div className="row">
+                <div>
+                  <a href={`https://github.com/${repo.full_name}`} target="_blank" rel="noreferrer">
+                    {repo.full_name}
+                  </a>
+                  <span className="muted small"> · branch {repo.default_branch}</span>
+                </div>
+                <div className="actions">
+                  <button onClick={() => setOpenId(openId === repo.id ? null : repo.id)}>
+                    {openId === repo.id ? "Hide" : "Runs and setup"}
+                  </button>
+                  <button className="danger" onClick={() => onDelete(repo)}>
+                    Remove
+                  </button>
+                </div>
               </div>
-              <button className="danger" onClick={() => onDelete(repo)}>
-                Remove
-              </button>
+              {openId === repo.id && <RepoPanel repo={repo} />}
             </li>
           ))}
         </ul>

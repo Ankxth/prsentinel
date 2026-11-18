@@ -80,3 +80,25 @@ export const addRepo = (full_name: string) =>
 export const deleteRepo = (id: string) => apiFetch<void>(`/v1/repos/${id}`, { method: "DELETE" });
 export const deleteAccount = () =>
   apiFetch<{ data_deleted: boolean; login_removed: boolean }>("/v1/me", { method: "DELETE" });
+
+/** Address the user's GitHub workflow should call. Set VITE_PUBLIC_API_URL to override. */
+export const PUBLIC_API_URL: string =
+  import.meta.env.VITE_PUBLIC_API_URL ?? "https://prsentinel-21ho.onrender.com";
+
+export type Run = {
+  id: string;
+  repo_id: string;
+  sha: string;
+  ref: string;
+  event: string;
+  status: "running" | "completed" | "failed" | "could_not_run" | string;
+  started_at: string;
+  finished_at: string | null;
+  summary: {
+    changed_files?: number;
+    changed_functions?: { file: string; name: string; change_type: string }[];
+    reason?: string | null;
+  };
+};
+
+export const listRuns = (repoId: string) => apiFetch<Run[]>(`/v1/repos/${repoId}/runs`);

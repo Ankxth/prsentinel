@@ -296,3 +296,15 @@ def repo_facts(root, facts_list, scan):
         "partial": scan.partial,
         "skipped_files": len(scan.skipped),
     }
+
+
+def config_hints(root):
+    """Hints only the runner can know (the server never sees config files)."""
+    return {
+        "pytest_config": bool(
+            os.path.exists(os.path.join(root, "pytest.ini"))
+            or "pytest" in _read_small(root, "pyproject.toml")
+            or "[tool:pytest]" in _read_small(root, "setup.cfg")
+            or "[pytest]" in _read_small(root, "tox.ini")
+        )
+    }

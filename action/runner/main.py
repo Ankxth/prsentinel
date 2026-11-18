@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import client  # noqa: E402
 import comment  # noqa: E402
+import context_sync  # noqa: E402
 import diff  # noqa: E402
 
 CONTRACT_VERSION = 1
@@ -119,6 +120,15 @@ def run(env):
             **kwargs)
         run_id, run_token = started["run_id"], started["run_token"]
         log("PRSentinel: run %s started for %s." % (run_id, started.get("repo")))
+
+        # The code map is a bonus: if it fails we warn and carry on, the run still completes.
+        try:
+            outcome = context_sync.sync(api_url, run_id, run_token, os.getcwd(), **kwargs)
+            log("PRSentinel: code map %s." % outcome)
+        except client.ApiError as err:
+            annotate("warning", "PRSentinel could not update the code map: %s" % err.detail)
+        except Exception as err:
+            annotate("warning", "PRSentinel could not update the code map: %s" % err)
 
         finished = client.request_json(
             "POST", "%s/v1/runs/%s/finish" % (api_url, run_id), token=run_token,

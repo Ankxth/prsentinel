@@ -79,7 +79,11 @@ class DiffTests(unittest.TestCase):
 class FakeServer:
     """Pretends to be the PRSentinel server, the GitHub token endpoint and the GitHub API."""
 
-    def __init__(self, fail_first_runs=0, existing_comments=None, runs_status=None):
+    def __init__(self, fail_first_runs=0, existing_comments=None, runs_status=None,
+                 context_status=None, known=(), batch_limit=100):
+        self.context_status = context_status
+        self.known = set(known)
+        self.batch_limit = batch_limit
         self.requests = []
         self.fail_first_runs = fail_first_runs
         self.comments = existing_comments if existing_comments is not None else []
@@ -118,6 +122,18 @@ class FakeServer:
                     return self._send(201, {"contract_version": 1, "run_id": "rid",
                                             "run_token": "run-token", "expires_in": 3600,
                                             "repo": "o/r", "limits": {"max_functions": 50}})
+                if path.startswith("/v1/runs/rid/context/"):
+                    if outer.context_status:
+                        return self._send(outer.context_status, {"detail": "Another build is running."})
+                    step = path.rsplit("/", 1)[1]
+                    if step == "manifest":
+                        need = [p for p in body["files"] if p not in outer.known]
+                        return self._send(200, {"need": need, "unchanged": len(body["files"]) - len(need),
+                                                "removed": 0, "max_batch_files": outer.batch_limit})
+                    if step == "files":
+                        return self._send(200, {"saved": len(body["files"])})
+                    return self._send(200, {"status": "complete", "built_from_sha": "x",
+                                            "partial": False, "python_files": 1})
                 if path == "/v1/runs/rid/finish":
                     return self._send(200, {"status": body["status"], "comment_marker": MARKER,
                                             "comment_markdown": MARKER + "\n### PRSentinel\nhi"})
@@ -145,7 +161,7 @@ def pr_event(base_sha, fork=False):
                              "head": {"repo": {"full_name": head_repo}}}}
 
 
-class RunnerTests(unittest.TestCase):
+class RunnerBase(unittest.TestCase):
     def setUp(self):
         self.repo, self.first, self.second = make_repo(
             {"a.py": "def f():\n    return 1\n"}, {"a.py": "def f():\n    return 2\n"})
@@ -175,6 +191,8 @@ class RunnerTests(unittest.TestCase):
         finally:
             os.chdir(old)
 
+
+class RunnerTests(RunnerBase):
     def test_pull_request_creates_comment(self):
         server = FakeServer()
         self.addCleanup(server.close)
@@ -250,6 +268,67 @@ class RunnerTests(unittest.TestCase):
         with open(self.summary) as handle:
             self.assertIn("Add this repo first.", handle.read())
         self.assertFalse(any(r[1].endswith("/finish") for r in server.requests))
+
+
+class ContextSyncTests(RunnerBase):
+    """The runner keeps the server's code map up to date, and never fails the run because of it."""
+
+    def context_calls(self, server):
+        return [r for r in server.requests if "/context/" in r[1]]
+
+    def test_uploads_facts_for_files_the_server_needs_then_commits(self):
+        server = FakeServer()
+        self.addCleanup(server.close)
+        self.assertEqual(self.go(self.env(server, pr_event(self.first))), 0)
+        steps = [r[1].rsplit("/", 1)[1] for r in self.context_calls(server)]
+        self.assertEqual(steps, ["manifest", "files", "commit"])
+        calls = self.context_calls(server)
+        self.assertEqual(calls[0][3], "Bearer run-token")
+        self.assertEqual(list(calls[0][2]["files"]), ["a.py"])
+        sent = calls[1][2]["files"][0]
+        self.assertEqual(sent["path"], "a.py")
+        self.assertEqual(sent["symbols"][0]["name"], "f")
+        self.assertNotIn("return 2", json.dumps(calls[1][2]))  # no function bodies leave the runner
+        self.assertEqual(calls[2][2], {"pytest_config": False})
+        finishes = [r for r in server.requests if r[1].endswith("/finish")]
+        self.assertEqual(finishes[0][2]["status"], "completed")
+
+    def test_unchanged_files_are_not_uploaded(self):
+        server = FakeServer(known=["a.py"])
+        self.addCleanup(server.close)
+        self.go(self.env(server, pr_event(self.first)))
+        steps = [r[1].rsplit("/", 1)[1] for r in self.context_calls(server)]
+        self.assertEqual(steps, ["manifest", "commit"])
+
+    def test_uploads_are_split_into_batches(self):
+        server = FakeServer(batch_limit=1)
+        self.addCleanup(server.close)
+        with open(os.path.join(self.repo, "b.py"), "w") as handle:
+            handle.write("def g():\n    return 1\n")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "c2")
+        self.go(self.env(server, pr_event(self.first)))
+        uploads = [r for r in self.context_calls(server) if r[1].endswith("/files")]
+        self.assertEqual(len(uploads), 2)
+        self.assertTrue(all(len(r[2]["files"]) == 1 for r in uploads))
+
+    def test_map_failure_does_not_fail_the_run(self):
+        server = FakeServer(context_status=409)
+        self.addCleanup(server.close)
+        self.assertEqual(self.go(self.env(server, pr_event(self.first))), 0)
+        finishes = [r for r in server.requests if r[1].endswith("/finish")]
+        self.assertEqual(finishes[0][2]["status"], "completed")
+        self.assertTrue(any(r[0] == "POST" and r[1].endswith("/issues/7/comments")
+                            for r in server.requests))
+
+    def test_pytest_config_hint_is_sent(self):
+        server = FakeServer()
+        self.addCleanup(server.close)
+        with open(os.path.join(self.repo, "pytest.ini"), "w") as handle:
+            handle.write("[pytest]\n")
+        self.go(self.env(server, pr_event(self.first)))
+        commit = [r for r in self.context_calls(server) if r[1].endswith("/commit")][0]
+        self.assertEqual(commit[2], {"pytest_config": True})
 
 
 class ClientTests(unittest.TestCase):

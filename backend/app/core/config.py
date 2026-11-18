@@ -28,8 +28,18 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:5173"
 
     database_url: SecretStr | None = None
+
+    # Supabase login. SUPABASE_URL looks like https://<project-ref>.supabase.co
     supabase_url: str | None = None
+    # Only needed if the project still signs tokens with the old shared secret (HS256).
     supabase_jwt_secret: SecretStr | None = None
+
+    # Optional GitHub token (no special permissions needed). Without one, GitHub's
+    # open API allows only 60 lookups per hour per server address.
+    github_token: SecretStr | None = None
+
+    # Protects the free AI quotas.
+    max_repos_per_user: int = 5
 
     groq_api_key: SecretStr | None = None
     gemini_api_key: SecretStr | None = None

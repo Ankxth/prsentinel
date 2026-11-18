@@ -2,7 +2,7 @@
 
 The one shared briefing for every chat and contributor working on PRSentinel.
 Read this first. Then read only the feature card(s) you are working on.
-Last updated: 2026-11-18 (Alembic added)
+Last updated: 2026-11-18 (login and repos backend added)
 
 Plain words first, industry terms in (brackets).
 
@@ -81,12 +81,14 @@ prsentinel/
   backend/      FastAPI + uvicorn (BUILT: skeleton with /health, settings, tests)
     app/
       main.py            create_app() factory; add new routers here
-      api/               one router file per area (health.py exists)
+      api/               one router file per area (health.py, me.py, repos.py exist)
       core/config.py     all settings (pydantic-settings); add new settings here
+      core/auth.py       Supabase token check; get_claims, current_user dependencies
+      services/github.py repo lookup on GitHub's open API (strict name check, one fixed host)
       db/                base.py (Base), session.py (engine, get_db), models/ (one file per area)
       services/          (planned) context engine, llm router, classifier, runs
       agents/            (planned) vuln_proof/
-    migrations/          Alembic: env.py, versions/ (baseline 0001 is empty)
+    migrations/          Alembic: env.py, versions/ (0001 empty baseline, 0002 users + repos)
     alembic.ini
     tests/
     requirements.txt     pinned
@@ -153,7 +155,9 @@ These are the seams. Change one only through the Requests board (section 11), be
 **5.4 Internal Python interfaces (backend services). Names are the agreed targets; the first feature to need one builds it.**
 - `get_context_pack(repo_id, file, function, token_budget) -> ContextPack` (provided by C, used by D and E)
 - `llm.complete(purpose, messages, budget_key) -> LLMResult` (provided by F, used by C, D, E)
-- `current_repo(auth) -> Repo` auth dependency for Action calls; `current_user(auth) -> User` for dashboard calls (provided by A/B in `core/auth.py`)
+- `current_user` (BUILT, `app.core.auth`): FastAPI dependency for dashboard endpoints; returns the signed-in `User` row (creates it on first sign-in). Use it on every dashboard endpoint, and filter queries by `user.id` (see `app/api/repos.py` for the pattern, and `tests/test_repos.py` for the cross-user tests to copy).
+- `current_repo(auth) -> Repo` auth dependency for Action calls (OIDC); to be provided by B in `core/oidc.py`.
+- Test helpers (BUILT, `tests/conftest.py`): `client`, `make_token`, `github` (fake GitHub), in-memory database. New dashboard endpoints should be tested with these.
 
 **5.5 Contract file:** request/response shapes for 5.1 live in `docs/api-contract.md` with a `contract_version` number. Action and server both send/check it. Additive changes only without a version bump.
 
@@ -241,7 +245,7 @@ Update your row when you start, finish, or get blocked. Statuses: `not started`,
 | Feature | Status | Notes |
 |---|---|---|
 | Foundation (repo layout, CI, skeletons) | done | v1 frozen in `bench/v1-capstone`; backend `/health`, frontend skeleton, CI jobs added. Not pushed to GitHub yet |
-| A Accounts and repositories | in progress | `users` and `repos` models + migration `0002` written, tests pass; not yet applied to Supabase. Next: Supabase JWT verification, repos endpoints |
+| A Accounts and repositories | in progress | Backend done: tables applied to Supabase, token check, `GET /v1/me`, `GET/POST/DELETE /v1/repos` with tests (55 backend tests pass). Left: GitHub provider setup in Supabase (user), frontend login + repos pages, setup-page workflow snippet, delete-my-data |
 | B The Action | not started | Needs OIDC verification and `docs/api-contract.md` |
 | C Context engine | not started | Needs `context_files` and `context_edges` tables |
 | D Test generation and diagnosis | not started | Reuse map in section 4 |
@@ -323,6 +327,8 @@ Format: `- [open] 2026-11-18 | from <feature> to <feature> | what and why`
 
 Newest first. Add a line when you change a contract, a table, a convention, or finish a milestone.
 
+- 2026-11-18 | A | Login and repos backend. `GET /v1/me`; `GET/POST /v1/repos`, `GET/DELETE /v1/repos/{id}`. POST body is `{full_name, llm_opt_in}` and `llm_opt_in` must be true. Repo must be public (checked on GitHub's open API), one GitHub repo can belong to only one account, cap `MAX_REPOS_PER_USER` (default 5), other users' repos answer 404. New settings: `SUPABASE_URL` (set), `SUPABASE_JWT_SECRET` (only for old HS256 projects), `GITHUB_TOKEN` (optional, raises GitHub lookup limit), `MAX_REPOS_PER_USER`. New dependency: `pyjwt[crypto]`. Tokens are verified by signature, issuer, audience and expiry against Supabase's public keys.
+- 2026-11-18 | A | Migration `0002` applied to the Supabase project. Supabase GitHub provider setup in progress by the user.
 - 2026-11-18 | A | Tables `users` (id = Supabase auth id, github_login, github_id, avatar_url, is_admin) and `repos` (owner_user_id FK cascade, github_id unique, github_owner, github_name, default_branch, is_public, llm_opt_in default false, settings JSON) added in migration `0002` with RLS (own-rows read policies). Models in `app/db/models/accounts.py`. Other features: a repo row is found from an Action run through `repos.github_id` or `github_owner`/`github_name`.
 - 2026-11-18 | Foundation | Supabase project created; baseline `0001` applied to it. Connection string convention changed to the Session pooler.
 - 2026-11-18 | Foundation | Alembic chosen and set up: `app/db/{base,session}.py`, `migrations/` with empty baseline `0001`, `alembic.ini`, 7 migration tests; added sqlalchemy, alembic, psycopg to `requirements.txt`. No tables yet.

@@ -2,7 +2,7 @@
 
 The one shared briefing for every chat and contributor working on PRSentinel.
 Read this first. Then read only the feature card(s) you are working on.
-Last updated: 2026-11-19 (Action v0 built and verified on a real PR)
+Last updated: 2026-11-19 (dashboard runs list and setup snippet added)
 
 Plain words first, industry terms in (brackets).
 
@@ -251,8 +251,8 @@ Update your row when you start, finish, or get blocked. Statuses: `not started`,
 | Feature | Status | Notes |
 |---|---|---|
 | Foundation (repo layout, CI, skeletons) | done | v1 frozen in `bench/v1-capstone`; backend `/health`, frontend skeleton, CI jobs added. Not pushed to GitHub yet |
-| A Accounts and repositories | in progress | Backend done: tables applied to Supabase, token check, `GET /v1/me`, `GET/POST/DELETE /v1/repos` with tests (55 backend tests pass). Frontend sign-in and repos pages work end to end (user tested: sign in, add, remove, rows appear and disappear in Supabase). Delete-my-account built (59 backend tests). Left: setup-page workflow snippet (waits for B), cache the public check |
-| B The Action | in progress | Server side built: GitHub token check, `runs` table (migration `0003`), run token, `POST /v1/runs`, `POST /v1/runs/{id}/finish`, dashboard run views, `docs/api-contract.md` (94 backend tests). Migration 0003 applied; backend deployed on Render (`https://prsentinel-21ho.onrender.com`). Action v0 built and tested on real GitHub with `Ankxth/prsentinel-demo` (see change log): finds changed functions, starts and finishes a run, posts one PR comment and updates it on new pushes, reports "could not run" honestly. Test generation and scanners are not wired in yet. Next: runs list and workflow snippet in the dashboard, real fork-PR test, pinger |
+| A Accounts and repositories | done | Backend done: tables applied to Supabase, token check, `GET /v1/me`, `GET/POST/DELETE /v1/repos` with tests (55 backend tests pass). Frontend sign-in and repos pages work end to end (user tested: sign in, add, remove, rows appear and disappear in Supabase). Delete-my-account built (59 backend tests). Setup snippet and per-repo runs list built (user verified in the dashboard). Left (small): cache the public check |
+| B The Action | in progress | Server side built: GitHub token check, `runs` table (migration `0003`), run token, `POST /v1/runs`, `POST /v1/runs/{id}/finish`, dashboard run views, `docs/api-contract.md` (94 backend tests). Migration 0003 applied; backend deployed on Render (`https://prsentinel-21ho.onrender.com`). Action v0 built and tested on real GitHub with `Ankxth/prsentinel-demo` (see change log): finds changed functions, starts and finishes a run, posts one PR comment and updates it on new pushes, reports "could not run" honestly. Test generation and scanners are not wired in yet. Dashboard runs list built. Next: real fork-PR test, pinger |
 | C Context engine | not started | Needs `context_files` and `context_edges` tables |
 | D Test generation and diagnosis | not started | Reuse map in section 4 |
 | E Vulnerability module | not started | E1 scanners first, E3 agent later |
@@ -277,7 +277,8 @@ Each card: purpose, depends on, provides, key files, first steps, done when.
 - **Done so far:** `users`/`repos` tables, Supabase token verification, `/v1/me`, repo endpoints with public check.
 - **Also done:** frontend GitHub sign-in (supabase-js) and repos page (`frontend/src/components/`, `frontend/src/lib/api.ts` adds the token to every backend call; other features' pages should reuse `apiFetch`). `DELETE /v1/me` deletes the user and everything under them.
 - **Rule for every feature:** any table that holds user data must cascade from `users` (directly or through `repos`), so account deletion removes it. Add a test when you add a table (see `tests/test_delete_account.py`).
-- **Next steps:** setup-page workflow snippet (needs the Action's final shape from B); cache the public check.
+- **Also done:** per-repo panel ("Runs and setup") with the copyable workflow file and the latest runs (`frontend/src/components/RepoPanel.tsx`, `listRuns` in `api.ts`). The snippet uses `VITE_PUBLIC_API_URL` (default the Render URL).
+- **Next steps:** cache the public check.
 - **Done when:** a user signs in locally, adds a public repo, sees the workflow snippet, deletes the repo and their data; tests prove one user cannot read another's repos.
 
 ### B. The Action
@@ -287,7 +288,7 @@ Each card: purpose, depends on, provides, key files, first steps, done when.
 - **Key files:** `backend/app/core/oidc.py`, `backend/app/api/runs.py`, `backend/app/services/run_service.py`, `action/`.
 - **Done so far (server):** GitHub token check, `runs` table, run token, start and finish endpoints, dashboard run views, contract doc.
 - **Done so far (Action v0):** `action/action.yml` (composite; inputs `api-url`, `audience`, `github-token`, `fail-on-error`), stdlib-only runner, 11 tests (`python -m unittest discover -s action/tests`), CI job `action`. Verified on the demo repo: push run writes the job summary, pull request run posts one comment, a later push updates that same comment, and a repo that is not added gives a clear "could not run, nothing was checked" message.
-- **Next steps:** runs list and real workflow snippet in the dashboard; verify fork-PR behaviour with a real fork; pinger or paid instance so the server does not sleep; wire in D (generate and results endpoints) and E when ready. Known trade-off: the check stays green when the Action could not run (default `fail-on-error` false), so a title or warning marker may be added later.
+- **Next steps:** verify fork-PR behaviour with a real fork; pinger or paid instance so the server does not sleep; wire in D (generate and results endpoints) and E when ready. Known trade-off: the check stays green when the Action could not run (default `fail-on-error` false), so a title or warning marker may be added later.
 - **Done when (P1 exit):** opening a PR on the demo repo produces a comment and the run is visible on the live dashboard. Test step runs with a scrubbed environment (no token, no secrets); "could not run" is reported distinctly.
 
 ### C. Context engine
@@ -338,6 +339,7 @@ Format: `- [open] 2026-11-18 | from <feature> to <feature> | what and why`
 
 Newest first. Add a line when you change a contract, a table, a convention, or finish a milestone.
 
+- 2026-11-19 | A | Dashboard: each repo has a "Runs and setup" panel (latest 50 runs from `GET /v1/repos/{id}/runs`, copyable workflow file). New optional setting `VITE_PUBLIC_API_URL`. `frontend/package-lock.json` regenerated on Linux (it was missing optional `@emnapi/*` entries, which made `npm ci` fail in CI). Other features: add run details to the panel by extending `RunsList` in `RepoPanel.tsx`.
 - 2026-11-19 | B | Action v0 built and verified on real GitHub (`Ankxth/prsentinel-demo`). Use it with `uses: Ankxth/prsentinel/action@main`, `api-url: https://prsentinel-21ho.onrender.com`, workflow `permissions: id-token: write, contents: read, pull-requests: write`, and `actions/checkout` with `fetch-depth: 0`. Runner files: `action/runner/{diff,client,comment,main}.py`. Pull requests compare against the PR base commit, pushes against the `before` commit (first push falls back to the previous commit or the empty tree). `change_type` sent to the server uses `deleted` (v1 said `removed`). The runner retries 502/503/504 and network errors for about 150 seconds. Feature D and E: add your calls inside `runner/main.py` between start and finish, and finish with `could_not_run` and a reason when nothing could be checked.
 - 2026-11-18 | B | Run lifecycle on the server. Table `runs` (migration `0003`, RLS owner-read; cascades from `repos`): repo_id, github_run_id, run_attempt (unique together per repo), sha, ref, event, status (`running` | `completed` | `failed` | `could_not_run`), started_at, finished_at, `summary` JSON (changed_files, changed_functions, reason; D and E may add keys). Endpoints `POST /v1/runs` (GitHub token), `POST /v1/runs/{id}/finish` (run token), `GET /v1/repos/{id}/runs`, `GET /v1/runs/{id}` (dashboard). Shapes in `docs/api-contract.md` (contract_version 1). Repo is found by GitHub's numeric `repository_id`; a renamed repo is updated automatically. New settings: `RUN_TOKEN_SECRET` (required for runs; generate a long random string), `RUN_TOKEN_TTL_SECONDS`, `GITHUB_OIDC_AUDIENCE` (default `prsentinel`), `MAX_FUNCTIONS_PER_RUN`. Feature D and E: add your endpoints to `docs/api-contract.md` and protect them with `current_run`.
 - 2026-11-18 | A | `DELETE /v1/me` returns `{data_deleted, login_removed}`; deletes the user row (repos and anything cascading from them go too) and, if the optional `SUPABASE_SECRET_KEY` is set, the Supabase login record. Frontend "Delete my account" section. Rule: user-data tables must cascade from `users`. Dashboard dark-mode CSS fixed; Vite upgraded to 8 (0 audit warnings, needs Node 20.19+ or 22.12+).

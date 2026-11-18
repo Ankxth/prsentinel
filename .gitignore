@@ -1,10 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
-<<<<<<< HEAD
 venv/
-=======
->>>>>>> 80b49b0dd20cd7b46f14979d88d42bdfb4990ac6
 .env
 .pytest_cache/
 
@@ -24,3 +21,6 @@ src/prsentinel.egg-info/
 # time, and the numbers that matter go into PROMPT_LOG.md by hand.
 eval_*_output.txt
 heldback_runs.log
+
+# Separate repo that lives next to this one (the demo target for the Action).
+prsentinel-demo/

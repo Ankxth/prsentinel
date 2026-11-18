@@ -78,3 +78,5 @@ export const addRepo = (full_name: string) =>
     body: JSON.stringify({ full_name, llm_opt_in: true }),
   });
 export const deleteRepo = (id: string) => apiFetch<void>(`/v1/repos/${id}`, { method: "DELETE" });
+export const deleteAccount = () =>
+  apiFetch<{ data_deleted: boolean; login_removed: boolean }>("/v1/me", { method: "DELETE" });

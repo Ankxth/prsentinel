@@ -2,7 +2,7 @@
 
 The one shared briefing for every chat and contributor working on PRSentinel.
 Read this first. Then read only the feature card(s) you are working on.
-Last updated: 2026-11-18 (login and repos backend added)
+Last updated: 2026-11-18 (sign-in tested, delete account added)
 
 Plain words first, industry terms in (brackets).
 
@@ -93,7 +93,7 @@ prsentinel/
     tests/
     requirements.txt     pinned
     .env.example
-  frontend/     React + Vite + TypeScript (BUILT: skeleton calling /health)
+  frontend/     React + Vite + TypeScript (BUILT: GitHub sign-in, repos page; src/lib/api.ts, src/components/)
   action/       (planned) action.yml + runner/ (Python package run in the user's repo)
   bench/        evaluation data and scripts; v1 frozen under bench/v1-capstone/
   docs/         context.md (this file), api-contract.md (planned), research notes
@@ -145,6 +145,7 @@ These are the seams. Change one only through the Requests board (section 11), be
 - `POST /v1/runs/{id}/finish` classify, triage, store, return comment markdown
 
 **5.2 Dashboard-facing API (auth: Supabase JWT)**
+- `GET /v1/me`, `DELETE /v1/me` (delete account and data)
 - `GET/POST /v1/repos`, `DELETE /v1/repos/{id}`
 - `GET /v1/repos/{id}/runs`, `GET /v1/runs/{id}`
 - `GET /v1/repos/{id}/findings`, `PATCH /v1/findings/{id}`
@@ -245,7 +246,7 @@ Update your row when you start, finish, or get blocked. Statuses: `not started`,
 | Feature | Status | Notes |
 |---|---|---|
 | Foundation (repo layout, CI, skeletons) | done | v1 frozen in `bench/v1-capstone`; backend `/health`, frontend skeleton, CI jobs added. Not pushed to GitHub yet |
-| A Accounts and repositories | in progress | Backend done: tables applied to Supabase, token check, `GET /v1/me`, `GET/POST/DELETE /v1/repos` with tests (55 backend tests pass). Left: GitHub provider setup in Supabase (user), frontend login + repos pages, setup-page workflow snippet, delete-my-data |
+| A Accounts and repositories | in progress | Backend done: tables applied to Supabase, token check, `GET /v1/me`, `GET/POST/DELETE /v1/repos` with tests (55 backend tests pass). Frontend sign-in and repos pages work end to end (user tested: sign in, add, remove, rows appear and disappear in Supabase). Delete-my-account built (59 backend tests). Left: setup-page workflow snippet (waits for B), cache the public check |
 | B The Action | not started | Needs OIDC verification and `docs/api-contract.md` |
 | C Context engine | not started | Needs `context_files` and `context_edges` tables |
 | D Test generation and diagnosis | not started | Reuse map in section 4 |
@@ -269,7 +270,9 @@ Each card: purpose, depends on, provides, key files, first steps, done when.
 - **Provides:** `users`, `repos` tables; `current_user` dependency; `GET/POST /v1/repos`, `DELETE /v1/repos/{id}`; repo cap and LLM opt-in flag; setup page data (workflow file text).
 - **Key files:** `backend/app/api/repos.py`, `backend/app/core/auth.py`, `backend/app/db/`, `frontend/src` login and repos pages.
 - **Done so far:** `users`/`repos` tables, Supabase token verification, `/v1/me`, repo endpoints with public check.
-- **Next steps:** frontend login (supabase-js GitHub sign-in) and repos pages; setup-page workflow snippet; delete-my-data; cache the public check.
+- **Also done:** frontend GitHub sign-in (supabase-js) and repos page (`frontend/src/components/`, `frontend/src/lib/api.ts` adds the token to every backend call; other features' pages should reuse `apiFetch`). `DELETE /v1/me` deletes the user and everything under them.
+- **Rule for every feature:** any table that holds user data must cascade from `users` (directly or through `repos`), so account deletion removes it. Add a test when you add a table (see `tests/test_delete_account.py`).
+- **Next steps:** setup-page workflow snippet (needs the Action's final shape from B); cache the public check.
 - **Done when:** a user signs in locally, adds a public repo, sees the workflow snippet, deletes the repo and their data; tests prove one user cannot read another's repos.
 
 ### B. The Action
@@ -328,6 +331,8 @@ Format: `- [open] 2026-11-18 | from <feature> to <feature> | what and why`
 
 Newest first. Add a line when you change a contract, a table, a convention, or finish a milestone.
 
+- 2026-11-18 | A | `DELETE /v1/me` returns `{data_deleted, login_removed}`; deletes the user row (repos and anything cascading from them go too) and, if the optional `SUPABASE_SECRET_KEY` is set, the Supabase login record. Frontend "Delete my account" section. Rule: user-data tables must cascade from `users`. Dashboard dark-mode CSS fixed; Vite upgraded to 8 (0 audit warnings, needs Node 20.19+ or 22.12+).
+- 2026-11-18 | A | Frontend: GitHub sign-in, header with sign-out, repos page (add with AI opt-in checkbox, list, remove). Needs `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` in `frontend/.env.local`. New dependency `@supabase/supabase-js`. Shared helper: `apiFetch` in `frontend/src/lib/api.ts`.
 - 2026-11-18 | A | Login and repos backend. `GET /v1/me`; `GET/POST /v1/repos`, `GET/DELETE /v1/repos/{id}`. POST body is `{full_name, llm_opt_in}` and `llm_opt_in` must be true. Repo must be public (checked on GitHub's open API), one GitHub repo can belong to only one account, cap `MAX_REPOS_PER_USER` (default 5), other users' repos answer 404. New settings: `SUPABASE_URL` (set), `SUPABASE_JWT_SECRET` (only for old HS256 projects), `GITHUB_TOKEN` (optional, raises GitHub lookup limit), `MAX_REPOS_PER_USER`. New dependency: `pyjwt[crypto]`. Tokens are verified by signature, issuer, audience and expiry against Supabase's public keys.
 - 2026-11-18 | A | Migration `0002` applied to the Supabase project. Supabase GitHub provider setup in progress by the user.
 - 2026-11-18 | A | Tables `users` (id = Supabase auth id, github_login, github_id, avatar_url, is_admin) and `repos` (owner_user_id FK cascade, github_id unique, github_owner, github_name, default_branch, is_public, llm_opt_in default false, settings JSON) added in migration `0002` with RLS (own-rows read policies). Models in `app/db/models/accounts.py`. Other features: a repo row is found from an Action run through `repos.github_id` or `github_owner`/`github_name`.

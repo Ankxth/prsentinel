@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     # Only needed if the project still signs tokens with the old shared secret (HS256).
     supabase_jwt_secret: SecretStr | None = None
 
+    # Server-only admin key (the SECRET key, never the publishable one). Only used to remove a
+    # user's Supabase login when they delete their account. Optional: without it their data
+    # is still deleted, but the login record stays in Supabase.
+    supabase_secret_key: SecretStr | None = None
+
     # Optional GitHub token (no special permissions needed). Without one, GitHub's
     # open API allows only 60 lookups per hour per server address.
     github_token: SecretStr | None = None

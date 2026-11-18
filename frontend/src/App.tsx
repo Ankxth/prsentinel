@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import AccountSection from "./components/AccountSection";
 import ReposPage from "./components/ReposPage";
 import SignIn from "./components/SignIn";
 import { getMe, type Me } from "./lib/api";
@@ -53,7 +54,12 @@ export default function App() {
           <button onClick={() => supabase!.auth.signOut()}>Sign out and try again</button>
         </section>
       ) : (
-        me && <ReposPage />
+        me && (
+          <>
+            <ReposPage />
+            <AccountSection login={me.github_login} />
+          </>
+        )
       )}
     </main>
   );

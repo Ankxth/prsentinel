@@ -71,9 +71,14 @@ class Settings(BaseSettings):
     groq_api_key_summaries: SecretStr | None = None
     # llama-3.1-8b-instant was retired on Groq (404 model_not_found, 2026-11-19). Check
     # https://console.groq.com/docs/models for what your key can use.
-    groq_model: str = "openai/gpt-oss-20b"
+    # Test generation (feature D) uses the default key with a stronger model.
+    groq_model: str = "openai/gpt-oss-120b"
     groq_model_summaries: str = "openai/gpt-oss-20b"
     llm_timeout_seconds: float = 20.0
+    # Daily allowance (UTC day), counted in tokens (input + output) from `llm_usage`.
+    # When one is used up, test generation ends with "no result, allowance used", never a fake pass.
+    llm_daily_tokens_per_repo: int = 150_000
+    llm_daily_tokens_per_user: int = 300_000
 
 
 @lru_cache

@@ -126,11 +126,28 @@ Response: `{"status": "complete", "built_from_sha": "...", "partial": false, "py
 409 lists how many files are still missing. Call it only after every requested file was uploaded. The commit also rebuilds the repo's call graph
 (`context_edges`) from all stored files; nothing extra is sent for that.
 
+### `POST /v1/runs/{run_id}/generate` (auth: run token, run must still be `running`)
+
+Writes pytest tests for one changed function. The server never runs them and never stores source;
+the runner sends the function's source.
+
+Request: `{"file": "app/pricing.py", "name": "total" | "Cart.total", "old_code": "..." | null, "new_code": "..."}`
+(`old_code` is null for an added function; each code field is at most 20000 characters).
+
+Response 200: `{"function_id": "...", "status": "generated" | "could_not_generate", "reason": null | "...",
+"test_code": "..." | null, "cached": false, "import_line": "from app.pricing import total"}`.
+Tests import the real module, so the runner must run them from the repo root of the new code.
+`could_not_generate` covers every AI-side problem (repo has not opted in, daily allowance used, model busy,
+unusable answer); `reason` is plain text and safe to show. It is never a pass, and the runner should report
+"no result" for that function and not retry. `cached: true` means the same old code, new code, context and
+model were seen before in this repo and the stored tests were reused (no model call, no allowance used).
+
+Errors: 404 the function is not one of this run's changes, 409 run already finished, 422 the function was deleted.
+
 ### Reserved for other features (not built yet)
 
 | Endpoint | Owner | Purpose |
 |---|---|---|
-| `POST /v1/runs/{run_id}/generate` | D | tests for one function (context-aware) |
 | `POST /v1/runs/{run_id}/results` | D, E | upload test results and scanner output |
 | `POST /v1/runs/{run_id}/findings/{fid}/agent/step` | E | proof-agent ping-pong |
 

@@ -70,6 +70,10 @@ class ScanError(Exception):
     """A scanner could not produce results. The text is a short reason that is safe to show."""
 
 
+class NoDependencies(ScanError):
+    """The tree has no dependency files at all (a clear answer, unlike a failure)."""
+
+
 # ------------------------------------------------------------------------------ small helpers
 
 def clip(text, limit=MAX_MESSAGE):
@@ -296,7 +300,7 @@ def split_requirements(text):
 def scan_pip_audit(py, root, run_cmd):
     files = find_requirement_files(root)
     if not files:
-        raise ScanError("no requirements*.txt file was found, so there were no dependencies to audit")
+        raise NoDependencies("no requirements*.txt file was found, so there were no dependencies to audit")
     found, checked, skipped, unpinned_total = [], 0, [], 0
     scratch = tempfile.mkdtemp(prefix="prsentinel_req_")
     try:
@@ -394,6 +398,8 @@ def collect(py, root, old_root, base_is_empty, run_cmd, started, budget, log):
             try:
                 base_found, _ = SCANNERS[tool](py, old_root, run_cmd)
                 compared = True
+            except NoDependencies:
+                compared = True  # the old code had no dependency files, so every dependency is new
             except ScanError as err:
                 log("PRSentinel: %s could not scan the old code (%s); nothing is called new."
                     % (tool, clip(str(err), 120)))

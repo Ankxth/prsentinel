@@ -137,6 +137,16 @@ export type ContextFileDetail = {
   is_test: boolean;
   parse_error: string | null;
   symbols: ContextSymbol[];
+  /** AI summary; `summary_current` is false when the file changed after it was written. */
+  summary: string | null;
+  summary_current: boolean;
+};
+
+export type FileSummary = {
+  path: string;
+  summary: string;
+  current: boolean;
+  generated: boolean;
 };
 
 export type ContextPackPreview = {
@@ -152,4 +162,10 @@ export const getContextPack = (repoId: string, file: string, fn: string, budget 
   apiFetch<ContextPackPreview>(
     `/v1/repos/${repoId}/context/pack?file=${encodeURIComponent(file)}` +
       `&function=${encodeURIComponent(fn)}&budget=${budget}`,
+  );
+/** Writes the file's AI summary (or returns the stored one if the file has not changed). */
+export const summarizeFile = (repoId: string, path: string) =>
+  apiFetch<FileSummary>(
+    `/v1/repos/${repoId}/context/file/summary?path=${encodeURIComponent(path)}`,
+    { method: "POST" },
   );

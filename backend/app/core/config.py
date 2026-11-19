@@ -65,6 +65,14 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = None
     gemini_api_key: SecretStr | None = None
 
+    # AI file summaries (C6) use their OWN Groq key so they can never use up the quota that test
+    # generation and the vulnerability checks depend on. There is no fallback to GROQ_API_KEY:
+    # without this key, summaries are simply switched off.
+    groq_api_key_summaries: SecretStr | None = None
+    groq_model: str = "llama-3.1-8b-instant"
+    groq_model_summaries: str = "llama-3.1-8b-instant"
+    llm_timeout_seconds: float = 20.0
+
 
 @lru_cache
 def get_settings() -> Settings:

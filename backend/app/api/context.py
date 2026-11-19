@@ -6,6 +6,8 @@ Action-facing (auth: the run token, for a run that is still running):
   POST /v1/runs/{id}/context/commit     finish the update
 Dashboard-facing (auth: Supabase sign-in, owner only):
   GET  /v1/repos/{id}/context
+  GET  /v1/repos/{id}/context/pack, /context/file
+  POST /v1/repos/{id}/context/file/summary   write (or return) the AI summary of one file
 """
 
 import re
@@ -24,8 +26,9 @@ from app.db.models.context import ContextEdge, ContextFile
 from app.db.models.runs import Run
 from app.db.session import get_db
 from app.services.context_engine import pack as context_pack
-from app.services.context_engine import store
+from app.services.context_engine import store, summaries
 from app.services.context_engine.store import ContextError
+from app.services.llm import LLMError, get_llm
 
 router = APIRouter(tags=["context"])
 
@@ -325,6 +328,9 @@ class FileDetailOut(BaseModel):
     is_test: bool
     parse_error: str | None
     symbols: list[SymbolOut]
+    # AI summary (C6). `summary_current` is False when the file changed after it was written.
+    summary: str | None = None
+    summary_current: bool = False
 
 
 @router.get("/v1/repos/{repo_id}/context/file", response_model=FileDetailOut)
@@ -354,4 +360,49 @@ def get_context_file(
             )
             for s in (row.symbols or [])
         ],
+        summary=row.summary,
+        summary_current=summaries.is_current(row),
+    )
+
+
+class SummaryOut(BaseModel):
+    path: str
+    summary: str
+    current: bool
+    generated: bool
+
+
+LLM_ERROR_STATUS = {"not_configured": 503, "rate_limited": 429}
+
+
+@router.post("/v1/repos/{repo_id}/context/file/summary", response_model=SummaryOut)
+def write_file_summary(
+    repo_id: UUID,
+    path: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    complete=Depends(get_llm),
+):
+    """Return the file's AI summary, writing it first if there is none or the file has changed.
+
+    A POST because it can spend the AI allowance. Calling it again for an unchanged file is free.
+    """
+    repo = db.scalar(select(Repo).where(Repo.id == repo_id, Repo.owner_user_id == user.id))
+    if repo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found.")
+    if not repo.llm_opt_in:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="AI features are switched off for this repository.",
+        )
+    try:
+        result = summaries.get_file_summary(db, repo.id, path, complete)
+    except summaries.SummaryError as error:
+        raise HTTPException(status_code=error.status, detail=error.detail) from None
+    except LLMError as error:
+        raise HTTPException(
+            status_code=LLM_ERROR_STATUS.get(error.kind, 502), detail=str(error)
+        ) from None
+    return SummaryOut(
+        path=result.path, summary=result.summary, current=result.current, generated=result.generated
     )

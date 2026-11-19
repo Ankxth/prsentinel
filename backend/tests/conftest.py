@@ -30,6 +30,10 @@ def _settings(monkeypatch):
     monkeypatch.setenv("MAX_REPOS_PER_USER", "2")
     monkeypatch.setenv("RUN_TOKEN_SECRET", "test-run-secret-0123456789-abcdefghijklmnop")
     monkeypatch.setenv("GITHUB_OIDC_AUDIENCE", "prsentinel")
+    # Tests never talk to a real model, even when backend/.env holds real keys (an empty value
+    # in the environment wins over the file). Tests that need a key set one themselves.
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    monkeypatch.setenv("GROQ_API_KEY_SUMMARIES", "")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

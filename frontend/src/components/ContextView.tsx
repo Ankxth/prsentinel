@@ -3,6 +3,7 @@ import {
   getContext,
   getContextFile,
   getContextPack,
+  summarizeFile,
   type ContextFileDetail,
   type ContextMap,
   type ContextPackPreview,
@@ -69,6 +70,55 @@ function PackPreview({ repo, file, fn }: { repo: Repo; file: string; fn: string 
   );
 }
 
+/** The AI summary of one file. It is written when the file is opened, and only if needed. */
+function Summary({ repo, detail }: { repo: Repo; detail: ContextFileDetail }) {
+  const [text, setText] = useState<string | null>(detail.summary);
+  const [current, setCurrent] = useState(detail.summary_current);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const canSummarize = detail.symbols.length > 0 && !detail.parse_error;
+
+  const write = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await summarizeFile(repo.id, detail.path);
+      setText(result.summary);
+      setCurrent(result.current);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }, [repo.id, detail.path]);
+
+  useEffect(() => {
+    if (canSummarize && !detail.summary_current) write();
+  }, [canSummarize, detail.summary_current, write]);
+
+  if (!canSummarize) return null;
+  return (
+    <div className="summary">
+      {text && <p>{text}</p>}
+      {busy && <p className="muted small">Writing a summary…</p>}
+      {text && !current && !busy && (
+        <p className="warn small">This summary is for an older version of this file.</p>
+      )}
+      {error && (
+        <p className="error small">
+          {error}{" "}
+          <button className="link" onClick={write}>
+            Try again
+          </button>
+        </p>
+      )}
+      {text && !busy && (
+        <p className="muted small">Written by an AI from the names and signatures only, so it can be wrong.</p>
+      )}
+    </div>
+  );
+}
+
 function FileDetail({ repo, path }: { repo: Repo; path: string }) {
   const [detail, setDetail] = useState<ContextFileDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +142,7 @@ function FileDetail({ repo, path }: { repo: Repo; path: string }) {
   return (
     <div className="filedetail">
       <h4>{detail.path}</h4>
+      <Summary key={detail.path} repo={repo} detail={detail} />
       {detail.parse_error && (
         <p className="error small">Could not read this file: {detail.parse_error}</p>
       )}

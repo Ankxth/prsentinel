@@ -156,4 +156,11 @@ and only the owner's runs are visible (others get 404).
 not the caller's or the function is not in the map.
 
 `GET /v1/repos/{id}/context/file?path=` lists one file's symbols (`name`, `kind`, `signature`, `doc`, `lines`) from the
-code map; 404 if the repo is not the caller's or the file is not in the map.
+code map, plus `summary` (text or null) and `summary_current` (false when the file changed after the summary was
+written); 404 if the repo is not the caller's or the file is not in the map.
+
+`POST /v1/repos/{id}/context/file/summary?path=` returns the file's AI summary `{path, summary, current, generated}`,
+writing it first when there is none or the file changed (`generated: true`). Asking again for an unchanged file
+costs nothing. Errors: 404 repo or file not found, 403 AI switched off for the repo, 422 nothing to summarize
+(no readable functions or classes), 429 AI service busy, 502 AI service failed or sent an unreadable answer,
+503 summaries not switched on for this server (no `GROQ_API_KEY_SUMMARIES`).

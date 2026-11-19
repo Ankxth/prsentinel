@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { listRuns, PUBLIC_API_URL, type Repo, type Run } from "../lib/api";
 import ContextView from "./ContextView";
+import RunPanel from "./RunView";
 
 function workflowText(): string {
   return `name: prsentinel
@@ -65,6 +66,7 @@ function SetupSnippet() {
 function RunsList({ repo }: { repo: Repo }) {
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [openRun, setOpenRun] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -99,6 +101,7 @@ function RunsList({ repo }: { repo: Repo }) {
               <th>Commit</th>
               <th>Functions</th>
               <th>Started</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -122,11 +125,17 @@ function RunsList({ repo }: { repo: Repo }) {
                 </td>
                 <td>{run.summary.changed_functions?.length ?? 0}</td>
                 <td className="small">{new Date(run.started_at).toLocaleString()}</td>
+                <td>
+                  <button className="link" onClick={() => setOpenRun(run.id)}>
+                    Details
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {openRun && <RunPanel runId={openRun} onClose={() => setOpenRun(null)} />}
     </div>
   );
 }

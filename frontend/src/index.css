@@ -42,6 +42,14 @@ ul.symbols li { padding: 2px 0; }
 .badge.failed, .badge.could_not_run { background: #ffebe9; color: #cf222e; }
 .badge.running { background: #fff8c5; color: #9a6700; }
 
+.run-view { margin-top: 12px; padding-top: 4px; border-top: 1px solid #d0d7de; }
+.fn-card { border: 1px solid #d0d7de; border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
+.fn-card p { margin: 6px 0; }
+ul.tests { list-style: none; padding: 0; margin: 4px 0 8px; font-size: 0.9rem; }
+ul.tests li { padding: 3px 0; }
+.badge.fn-tested { background: #ddf4ff; color: #0969da; }
+.badge.fn-skipped, .badge.fn-could_not_generate, .badge.fn-could_not_test { background: #fff8c5; color: #9a6700; }
+
 /* Dark mode. Kept at the end so it overrides the light rules above. */
 @media (prefers-color-scheme: dark) {
   :root { color: #e6edf3; background: #0d1117; }
@@ -62,4 +70,7 @@ ul.symbols li { padding: 2px 0; }
   .badge.completed { background: #12361f; color: #56d364; }
   .badge.failed, .badge.could_not_run { background: #4a1d1d; color: #ff7b72; }
   .badge.running { background: #3d2e00; color: #e3b341; }
+  .run-view, .fn-card { border-color: #30363d; }
+  .badge.fn-tested { background: #0c2d6b; color: #79c0ff; }
+  .badge.fn-skipped, .badge.fn-could_not_generate, .badge.fn-could_not_test { background: #3d2e00; color: #e3b341; }
 }

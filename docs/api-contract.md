@@ -244,6 +244,16 @@ its request and response shapes when you build it.
 `edges` = number of calls per state `{resolved, external, unresolved}`, up to 1000 files with symbol and call counts). Auth is the user's Supabase sign-in,
 and only the owner's runs are visible (others get 404).
 
+`GET /v1/runs/{id}/functions` (D8, the dashboard run page) returns the same per-function facts as the PR comment:
+`{run_id, status, reason, ai_note, functions: [{id, file, name, change_type, status, reason, counts, repair_rounds,
+tests: [{name, kind, label, diagnosis, before, after, rerun_passes, rerun_fails, message}], mutation}]}`.
+`kind` is the comment's bucket (`catches` | `flaky` | `odd` | `unreliable` | `new_fails` | `same`); only the newest
+repair round is listed; `mutation` is `null` (never reported), `{status: "not_measured", reason}` or
+`{status: "measured", killed, survived, percent, equivalent, could_not_run, capped, stopped_early, survivors, note}`.
+A function marked tested with no result rows is shown as `could_not_test`, never as tested. The generated test
+code is never sent, and failure texts are cut to 500 characters and are untrusted text. Owner-only (404 for anyone
+else); a run token does not open it. The page asks again every few seconds while `status` is `running`.
+
 `GET /v1/repos/{id}/context/pack?file=&function=&budget=3000` previews the context pack (see
 `get_context_pack` in `context.md` section 5.4) for one function: `{found, pack, text}`; 404 if the repo is
 not the caller's or the function is not in the map.

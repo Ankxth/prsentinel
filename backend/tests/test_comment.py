@@ -20,8 +20,10 @@ def test_a_catching_test_is_shown_with_the_fixed_sentence(client, run):
     ])
     comment = finish(client, run)
     assert "1 of 3 functions tested, 1 with a test that catches a change." in comment
-    assert "`lib.py::price`" in comment
-    assert "1 test catch a change" in comment and "1 test found no difference" in comment
+    assert "<summary><code>lib.py::price</code> (<code>modified</code>)" in comment
+    assert "<b>1 test catches a change</b>" in comment and "1 test found no difference" in comment
+    summary = next(line for line in comment.splitlines() if line.startswith("<summary>"))
+    assert "`" not in summary and "**" not in summary  # Markdown is not rendered inside <summary>
     assert "`test_zero`: passes on the old code, fails on the new code" in comment
     assert "failure: `DID NOT RAISE ValueError`" in comment
     assert "`test_normal`: same result on the old and the new code" in comment
@@ -101,3 +103,16 @@ def test_a_long_comment_is_shortened(client, run, db):
     stored = db.get(Run, __import__("uuid").UUID(run.id))
     comment = build_comment(stored, "o/r", db)
     assert len(comment) <= MAX_COMMENT_CHARS + 100
+
+
+def test_hostile_function_names_cannot_break_out_of_the_summary(client, run, db):
+    nasty = "f</summary><img src=x onerror=alert(1)>`\n[click](http://evil)"
+    row = db.query(RunFunction).filter_by(name="price").one()
+    row.name = nasty
+    db.commit()
+    post(client, run, [t("test_a", "passed", "failed", 0, 3)], name=nasty)
+    comment = finish(client, run)
+    summary = next(line for line in comment.splitlines() if line.startswith("<summary>"))
+    assert "<img" not in comment and comment.count("</summary>") == 1
+    assert "&lt;/summary&gt;" in summary
+    assert "\n[click]" not in comment

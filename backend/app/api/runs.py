@@ -26,6 +26,7 @@ from app.db.models.accounts import Repo, User
 from app.db.models.runs import Run
 from app.db.session import get_db
 from app.services.comment import COMMENT_MARKER, build_comment
+from app.services.run_functions import register_functions
 
 router = APIRouter(tags=["runs"])
 
@@ -107,6 +108,7 @@ def start_run(
         db.add(run)
         db.commit()
         db.refresh(run)
+        register_functions(db, run, [f.model_dump() for f in body.changed_functions])
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
 
     return StartRunOut(

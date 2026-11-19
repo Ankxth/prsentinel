@@ -21,7 +21,7 @@ from app.core.run_token import current_run
 from app.db.models.run_functions import FunctionTestResult, RunFunction
 from app.db.models.runs import Run
 from app.db.session import get_db
-from app.services import classifier
+from app.services import classifier, generator
 
 router = APIRouter(tags=["results"])
 
@@ -55,6 +55,9 @@ class ResultsIn(BaseModel):
     reason: str | None = Field(default=None, max_length=300)
     attempt: int = Field(default=0, ge=0, le=10)
     tests: list[TestOutcomeIn] = Field(default_factory=list, max_length=MAX_TESTS)
+    # D7: the repaired test file that produced these results (only used for attempt >= 1). Kept so
+    # a later run with the same inputs starts from the repaired tests, not the first ones.
+    test_code: str | None = Field(default=None, max_length=generator.MAX_TEST_CHARS)
 
 
 class TestOut(BaseModel):
@@ -151,5 +154,12 @@ def post_results(
         )
         out.append(TestOut(name=item.name, label=label, diagnosis=diagnosis, reason=reason))
     row.status, row.reason = "tested", None
+    if body.attempt >= 1 and body.test_code:
+        # Only a file that is still a test file for this function replaces the stored tests.
+        try:
+            generator.check_repaired(body.test_code, generator.import_line(row.file, row.name))
+            row.test_code = body.test_code
+        except ValueError:
+            pass
     db.commit()
     return ResultsOut(function_id=row.id, status="tested", tests=out)

@@ -143,3 +143,18 @@ def test_a_finished_run_cannot_be_repaired(client, ready, fake, db):
     db.commit()
     assert repair(client, ready).status_code == 409
     assert fake.calls == []
+
+
+def test_a_later_run_with_the_same_inputs_starts_from_the_repaired_tests(client, ready, db):
+    """D7: the repaired file is stored with the results, and /generate's cache then reuses it."""
+    fixed = "from lib import price\n\ndef test_double():\n    assert price(2) == 4\n"
+    row = function_row(db)
+    row.cache_key = "k" * 64
+    db.commit()
+    body = {"file": "lib.py", "name": "price", "status": "tested", "attempt": 1, "test_code": fixed,
+            "tests": [{"name": "test_double", "before": "passed", "after": "failed",
+                       "rerun_passes": 0, "rerun_fails": 3}]}
+    assert client.post(f"/v1/runs/{ready.id}/results", json=body,
+                       headers=bearer(ready.token)).status_code == 200
+    stored = function_row(db)
+    assert stored.test_code == fixed and stored.cache_key == "k" * 64

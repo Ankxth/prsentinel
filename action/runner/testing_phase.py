@@ -293,7 +293,7 @@ def _repair(api_url, run_id, token, item, old_code, new_code, code, file_name, t
             return code, tests
         again = _post_results(api_url, run_id, token, {
             "file": path, "name": name, "status": "tested", "attempt": attempt,
-            "tests": repaired}, kwargs)
+            "tests": repaired, "test_code": fixed["test_code"]}, kwargs)
         code, tests = fixed["test_code"], repaired
         labels = {t["name"]: t["label"] for t in again.get("tests", [])}
         log("PRSentinel: %s::%s: repaired (round %d): %s" % (path, name, attempt, ", ".join(

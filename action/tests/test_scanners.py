@@ -258,6 +258,22 @@ class WholeStepTests(unittest.TestCase):
         self.assertEqual({f["origin"] for f in body["findings"]}, {"unknown"})
         self.assertFalse({r["tool"]: r for r in body["scanners"]}["bandit"]["compared_with_base"])
 
+    def test_old_code_without_a_requirements_file_means_every_dependency_is_new(self):
+        calls = []
+
+        def audit(py, root, run_cmd):
+            calls.append(root)
+            if len(calls) > 1:
+                raise sc.NoDependencies("no requirements*.txt file was found")
+            return fake_scanner("shell=True")(py, root, run_cmd)
+
+        self.go(self.first, {"pip-audit": audit, "bandit": broken("off for this test")})
+        body = self.posted()
+        row = {r["tool"]: r for r in body["scanners"]}["pip-audit"]
+        self.assertTrue(row["compared_with_base"])
+        self.assertEqual({f["origin"] for f in body["findings"]}, {"new"})
+        self.assertEqual(len(body["findings"]), 2)
+
     def test_an_unknown_base_commit_gives_unknown_not_new(self):
         self.go("f" * 40, {})
         self.assertEqual({f["origin"] for f in self.posted()["findings"]}, {"unknown"})

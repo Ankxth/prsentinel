@@ -14,6 +14,7 @@ import client  # noqa: E402
 import comment  # noqa: E402
 import context_sync  # noqa: E402
 import diff  # noqa: E402
+import scanners  # noqa: E402
 import testing_phase  # noqa: E402
 
 CONTRACT_VERSION = 1
@@ -142,6 +143,20 @@ def run(env):
                        tested["skipped"]))
             except Exception as err:
                 annotate("warning", "PRSentinel could not run the tests: %s" % err)
+
+        # Security scanners are a bonus too: a scanner that fails is reported as "could not run"
+        # (never as a pass) and the run still completes.
+        if (env.get("PRSENTINEL_RUN_SCANNERS") or "true").lower() == "true":
+            try:
+                sent = scanners.run(api_url, run_id, run_token, base, os.getcwd(), kwargs, log,
+                                    annotate)
+                ran = [r["tool"] for r in sent["scanners"] if r["status"] == "ran"]
+                log("PRSentinel: scanners ran: %s; %d finding(s) reported."
+                    % (", ".join(ran) or "none", len(sent["findings"])))
+            except client.ApiError as err:
+                annotate("warning", "PRSentinel could not report the scanner results: %s" % err.detail)
+            except Exception as err:
+                annotate("warning", "PRSentinel could not run the scanners: %s" % err)
 
         finished = client.request_json(
             "POST", "%s/v1/runs/%s/finish" % (api_url, run_id), token=run_token,

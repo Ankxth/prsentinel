@@ -155,6 +155,46 @@ export type RunView = {
 
 export const getRunFunctions = (runId: string) => apiFetch<RunView>(`/v1/runs/${runId}/functions`);
 
+export type ScannerView = {
+  tool: string;
+  status: "ran" | "could_not_run" | string;
+  /** Why a scanner could not run, or a note about what it skipped. Untrusted text. */
+  reason: string | null;
+  version: string | null;
+  /** false means the old code could not be scanned, so nothing could be called new. */
+  compared_with_base: boolean;
+  new: number;
+  existing: number;
+  unknown: number;
+};
+
+export type FindingView = {
+  id: string;
+  tool: string;
+  rule_id: string;
+  severity: "high" | "medium" | "low" | "unknown" | string;
+  confidence: string;
+  file: string | null;
+  line: number | null;
+  /** Scanner text: untrusted, show as plain text. */
+  message: string;
+  cwe: string | null;
+  /** new (introduced by this commit) | existing | unknown (could not be compared) */
+  origin: "new" | "existing" | "unknown" | string;
+};
+
+export type FindingsView = {
+  run_id: string;
+  status: string;
+  scanners: ScannerView[];
+  counts: { new: number; existing: number; unknown: number };
+  omitted: number;
+  note: string;
+  findings: FindingView[];
+};
+
+export const getRunFindings = (runId: string) => apiFetch<FindingsView>(`/v1/runs/${runId}/findings`);
+
 export type ContextFile = {
   path: string;
   is_test: boolean;

@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, getRunFunctions, type RunFunctionView, type RunView, type TestView } from "../lib/api";
+import {
+  ApiError,
+  getRunFindings,
+  getRunFunctions,
+  type FindingsView,
+  type FindingView,
+  type RunFunctionView,
+  type RunView,
+  type TestView,
+} from "../lib/api";
+import { runLink } from "../lib/route";
 
 // While a run is going, ask the server again every few seconds. Stop after a while so a
 // forgotten tab does not keep asking forever; the Refresh button still works.
@@ -146,10 +156,93 @@ function FunctionCard({ fn }: { fn: RunFunctionView }) {
   );
 }
 
+const SEVERITY_ICON: Record<string, string> = { high: "🔴", medium: "🟠", low: "🟡", unknown: "⚪" };
+
+function FindingRow({ f }: { f: FindingView }) {
+  const where = f.file ? `${f.file}${f.line ? `:${f.line}` : ""}` : "?";
+  return (
+    <li>
+      {SEVERITY_ICON[f.severity] ?? "⚪"} <code>{f.rule_id}</code> ({f.tool}, {f.severity}
+      {f.cwe ? `, ${f.cwe}` : ""}) in <code>{where}</code>: {f.message}
+    </li>
+  );
+}
+
+function FindingsSection({ data }: { data: FindingsView }) {
+  const noScanners = data.scanners.length === 0;
+  const ranAny = data.scanners.some((s) => s.status === "ran");
+  const fresh = data.findings.filter((f) => f.origin !== "existing");
+  const old = data.findings.filter((f) => f.origin === "existing");
+  const { counts } = data;
+
+  let summary: string;
+  if (counts.new > 0) {
+    summary = `${counts.new} new finding(s) introduced by this commit`;
+    if (counts.existing) summary += `; ${counts.existing} already existed before it`;
+    if (counts.unknown) summary += `; ${counts.unknown} could not be compared with the old code`;
+    summary += ".";
+  } else if (counts.unknown > 0) {
+    summary = `Found ${counts.unknown} finding(s), but the old code could not be scanned, so nobody can tell whether this commit introduced them.`;
+  } else if (ranAny) {
+    summary = `No new findings in this commit.${counts.existing ? ` ${counts.existing} finding(s) already existed before it.` : ""}`;
+  } else {
+    summary = "No scanner ran, so nothing was checked. This is not a pass.";
+  }
+
+  return (
+    <div className="fn-card">
+      <h4>Security checks</h4>
+      {noScanners ? (
+        <p className="small muted">No scanner results were reported for this run.</p>
+      ) : (
+        <>
+          <ul className="tests">
+            {data.scanners.map((s) => (
+              <li key={s.tool}>
+                <code>{s.tool}</code>{s.version ? ` ${s.version}` : ""}:{" "}
+                {s.status === "ran" ? "ran" : <span className="warn">could not run</span>}
+                {s.reason && <span className="muted small"> ({s.reason})</span>}
+                {s.status === "ran" && !s.compared_with_base && (
+                  <span className="muted small"> (the old code could not be scanned, so nothing is called new)</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="small">{summary}</p>
+          {fresh.length > 0 && (
+            <ul className="tests">
+              {fresh.map((f) => (
+                <FindingRow key={f.id} f={f} />
+              ))}
+            </ul>
+          )}
+          {old.length > 0 && (
+            <details>
+              <summary className="small">{old.length} finding(s) that already existed before this commit</summary>
+              <ul className="tests">
+                {old.map((f) => (
+                  <FindingRow key={f.id} f={f} />
+                ))}
+              </ul>
+            </details>
+          )}
+          {data.omitted > 0 && (
+            <p className="small muted">{data.omitted} more finding(s) were not sent because there were too many.</p>
+          )}
+          <p className="small muted">{data.note}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function RunPanel({ runId, onClose }: { runId: string; onClose: () => void }) {
   const [view, setView] = useState<RunView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stopped, setStopped] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [findings, setFindings] = useState<FindingsView | null>(null);
+  const [findingsError, setFindingsError] = useState<string | null>(null);
   const startedAt = useRef(Date.now());
   const timer = useRef<number | undefined>(undefined);
 
@@ -158,6 +251,9 @@ export default function RunPanel({ runId, onClose }: { runId: string; onClose: (
       const data = await getRunFunctions(runId);
       setView(data);
       setError(null);
+      if (data.status !== "running") {
+        getRunFindings(runId).then(setFindings).catch(() => undefined);
+      }
       return data;
     } catch (e) {
       setError((e as Error).message);
@@ -171,6 +267,8 @@ export default function RunPanel({ runId, onClose }: { runId: string; onClose: (
     startedAt.current = Date.now();
     setStopped(false);
     setView(null);
+    setFindings(null);
+    setFindingsError(null);
 
     async function tick() {
       let data: RunView | null = null;
@@ -200,6 +298,36 @@ export default function RunPanel({ runId, onClose }: { runId: string; onClose: (
     };
   }, [runId]);
 
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(runLink(runId));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  // Scanner results arrive just before a run finishes, so ask once the run is no longer going.
+  const runStatus = view?.status;
+  useEffect(() => {
+    if (!runStatus || runStatus === "running") return;
+    let cancelled = false;
+    getRunFindings(runId)
+      .then((data) => {
+        if (!cancelled) {
+          setFindings(data);
+          setFindingsError(null);
+        }
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setFindingsError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, runStatus]);
+
   const running = view?.status === "running";
   return (
     <div className="run-view">
@@ -209,6 +337,7 @@ export default function RunPanel({ runId, onClose }: { runId: string; onClose: (
           {view && <span className={`badge ${view.status}`}>{RUN_STATUS_TEXT[view.status] ?? view.status}</span>}
         </h3>
         <div className="actions">
+          <button onClick={copyLink}>{copied ? "Copied" : "Copy link"}</button>
           <button onClick={load}>Refresh</button>
           <button onClick={onClose}>Close</button>
         </div>
@@ -236,6 +365,8 @@ export default function RunPanel({ runId, onClose }: { runId: string; onClose: (
       {view && view.functions.some((f) => f.status === "tested") && (
         <p className="small muted">{view.ai_note}</p>
       )}
+      {findings && <FindingsSection data={findings} />}
+      {findingsError && <p className="small error">Security checks could not be loaded: {findingsError}</p>}
     </div>
   );
 }

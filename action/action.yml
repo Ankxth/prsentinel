@@ -27,6 +27,11 @@ inputs:
     required: false
     default: "true"
 
+  run-scanners:
+    description: Run security scanners (Bandit, pip-audit, detect-secrets) on the old and the new code and report what is new in this commit. They are installed in a throwaway environment, so nothing is needed in an earlier step.
+    required: false
+    default: "true"
+
 runs:
   using: composite
   steps:
@@ -38,4 +43,5 @@ runs:
         PRSENTINEL_GITHUB_TOKEN: ${{ inputs.github-token }}
         PRSENTINEL_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
         PRSENTINEL_RUN_TESTS: ${{ inputs.run-tests }}
+        PRSENTINEL_RUN_SCANNERS: ${{ inputs.run-scanners }}
       run: python3 "$GITHUB_ACTION_PATH/runner/main.py"

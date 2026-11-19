@@ -220,11 +220,40 @@ Response 200: `{"function_id": "...", "status": "measured" | "not_measured", "sc
 Errors: 404 not one of this run's changes, 409 run finished or the function has no test results, 422 bad body.
 The comment shows the counts and always says the score is a lower bound (some faults change nothing).
 
+### `POST /v1/runs/{run_id}/findings` (auth: run token, run must still be `running`)
+
+Reports what the security scanners found (feature E1). The runner installs Bandit, pip-audit and
+detect-secrets in a throwaway environment, runs each one on the NEW code and on the OLD code (the
+base commit), and says which findings are new in this commit. Only a fingerprint, the rule, the place
+and a short message are sent: no source code, and never the value of a secret.
+
+Request: `{"scanners": [{"tool": "bandit" | "pip-audit" | "detect-secrets", "status": "ran" | "could_not_run",
+"reason": null | "...", "version": "1.9.4", "compared_with_base": true}], "findings": [{"tool", "rule_id",
+"severity": "high" | "medium" | "low" | "unknown", "confidence": same values, "file": "app.py", "line": 5,
+"message": "...", "cwe": "CWE-78" | null, "fingerprint": "<64 hex characters>", "origin": "new" | "existing" |
+"unknown"}], "omitted": 0}`
+- `fingerprint` is a SHA-256 of tool, rule, file, the text of the line (or, for secrets, a hash of the secret;
+  for dependencies, name and version) and a counter for repeats, so moving code does not make an old finding
+  look new. An edited line does count as new
+- `origin`: `new` = not in the old code's results, `existing` = was already there, `unknown` = the old code could
+  not be scanned. The server keeps `origin` only for a scanner that says `compared_with_base: true`; otherwise it
+  stores `unknown`, so nothing is ever called new without a comparison
+- a scanner that failed is sent with `status: "could_not_run"` and a short `reason`. A `ran` scanner may also carry
+  a `reason` (for example "1 dependency line(s) without == were not checked"). `could_not_run` is never shown as a pass
+- at most 500 findings per call (`422` above that); `omitted` says how many the runner left out
+- sending the call again replaces the earlier list for the run; the same fingerprint is stored once
+
+Response 200: `{"saved": 4, "new": 1, "existing": 2, "unknown": 1}`. Errors: 401 no or wrong run token, 409 the run
+has finished, 422 bad body (unknown tool or level, fingerprint not 64 hex characters, too many findings).
+The server also writes the scanner rows (with counts per origin) to `runs.summary["scanners"]` and
+`runs.summary["findings_omitted"]`. The PR comment gets a "Security checks" section: which scanners ran or could
+not run, the number of new findings, only the new (or unknown) findings listed (10 at most), existing ones only
+counted, and the sentence that scanners find only some problems.
+
 ### Reserved for other features (not built yet)
 
 | Endpoint | Owner | Purpose |
 |---|---|---|
-| `POST /v1/runs/{run_id}/results` (scanner output) | E | extended later for scanner output |
 | `POST /v1/runs/{run_id}/findings/{fid}/agent/step` | E | proof-agent ping-pong |
 
 All of them authenticate with `Depends(current_run)` (see `backend/app/core/run_token.py`), which
@@ -254,6 +283,13 @@ A function marked tested with no result rows is shown as `could_not_test`, never
 code is never sent, and failure texts are cut to 500 characters and are untrusted text. Owner-only (404 for anyone
 else); a run token does not open it. The page asks again every few seconds while `status` is `running`.
 
+`GET /v1/runs/{id}/findings` (E1, the dashboard run page) returns what the scanners reported, in full:
+`{run_id, status, scanners: [{tool, status, reason, version, compared_with_base, new, existing, unknown}],
+counts: {new, existing, unknown}, omitted, note, findings: [{id, tool, rule_id, severity, confidence, file, line,
+message, cwe, origin}]}`, sorted new first, then by severity, file and line. Everything from the repo is untrusted
+text. Owner-only (404 for anyone else); a run token does not open it. An older run, or one where the scanners were
+switched off, has `scanners: []`.
+
 `GET /v1/repos/{id}/context/pack?file=&function=&budget=3000` previews the context pack (see
 `get_context_pack` in `context.md` section 5.4) for one function: `{found, pack, text}`; 404 if the repo is
 not the caller's or the function is not in the map.
@@ -265,5 +301,5 @@ written); 404 if the repo is not the caller's or the file is not in the map.
 `POST /v1/repos/{id}/context/file/summary?path=` returns the file's AI summary `{path, summary, current, generated}`,
 writing it first when there is none or the file changed (`generated: true`). Asking again for an unchanged file
 costs nothing. Errors: 404 repo or file not found, 403 AI switched off for the repo, 422 nothing to summarize
-(no readable functions or classes), 429 AI service busy, 502 AI service failed or sent an unreadable answer,
+(no readable functions or classes), 429 AI service busy or today's allowance for file summaries used up (feature F; a stored current summary is still returned), 502 AI service failed or sent an unreadable answer,
 503 summaries not switched on for this server (no `GROQ_API_KEY_SUMMARIES`).

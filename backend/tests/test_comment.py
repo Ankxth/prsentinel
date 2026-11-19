@@ -138,3 +138,29 @@ def test_two_repair_rounds_are_counted(client, run):
 def test_a_run_without_repairs_has_no_repair_note(client, run):
     post(client, run, [t("test_a", "passed", "failed", 0, 3)])
     assert "repaired" not in finish(client, run)
+
+
+# ------------------------------------------------ link to the run page in the dashboard
+
+def test_no_dashboard_link_when_no_address_is_set(client, run):
+    assert "View full details" not in finish(client, run)
+
+
+def test_the_comment_links_to_the_run_page_when_an_address_is_set(client, run, monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("PUBLIC_DASHBOARD_URL", "https://dash.example.com/")
+    get_settings.cache_clear()
+    comment = finish(client, run)
+    assert f"[View full details in the dashboard](https://dash.example.com/#/runs/{run.id})" in comment
+
+
+def test_only_plain_web_addresses_become_links():
+    from app.services.comment import dashboard_link
+
+    rid = "11111111-2222-3333-4444-555555555555"
+    assert dashboard_link("https://a.b", rid) == f"https://a.b/#/runs/{rid}"
+    assert dashboard_link("http://localhost:5173", rid) == f"http://localhost:5173/#/runs/{rid}"
+    for bad in ["", None, "javascript:alert(1)", "ftp://a.b", "https://a b", "https://a.b/x)[y](z",
+                "https://a.b/<img>", "//a.b", "a.b"]:
+        assert dashboard_link(bad, rid) is None

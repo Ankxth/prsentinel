@@ -95,6 +95,8 @@ Response
 ```
 The Action posts `comment_markdown` on the pull request. If a comment containing `comment_marker`
 already exists, it **updates that comment** instead of adding a new one.
+The comment lists each changed function with the test results stored by `/results` (a function with no
+result is shown as "not tested", never as a pass), so call `/results` for every function before `/finish`.
 
 ### Context map (feature C). Auth: run token, run must still be `running`
 

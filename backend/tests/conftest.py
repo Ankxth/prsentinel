@@ -34,9 +34,21 @@ def _settings(monkeypatch):
     # in the environment wins over the file). Tests that need a key set one themselves.
     monkeypatch.setenv("GROQ_API_KEY", "")
     monkeypatch.setenv("GROQ_API_KEY_SUMMARIES", "")
+    monkeypatch.setenv("GEMINI_API_KEY", "")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _llm_no_waiting(monkeypatch):
+    """Retries never really wait in tests, and no test inherits another test's breaker state."""
+    from app.services import llm
+
+    monkeypatch.setattr(llm, "_sleep", lambda seconds: None)
+    llm.reset_breakers()
+    yield
+    llm.reset_breakers()
 
 
 @pytest.fixture(scope="session")

@@ -80,8 +80,10 @@ class FakeServer:
     """Pretends to be the PRSentinel server, the GitHub token endpoint and the GitHub API."""
 
     def __init__(self, fail_first_runs=0, existing_comments=None, runs_status=None,
-                 context_status=None, known=(), batch_limit=100, generate_reply=None):
+                 context_status=None, known=(), batch_limit=100, generate_reply=None,
+                 repair_replies=None):
         self.generate_reply = generate_reply
+        self.repair_replies = list(repair_replies or [])
         self.context_status = context_status
         self.known = set(known)
         self.batch_limit = batch_limit
@@ -139,9 +141,22 @@ class FakeServer:
                     reply = outer.generate_reply or {"status": "could_not_generate",
                                                      "reason": "no model in this test"}
                     return self._send(200, reply)
+                if path == "/v1/runs/rid/repair":
+                    reply = (outer.repair_replies.pop(0) if outer.repair_replies else
+                             {"status": "could_not_generate", "reason": "no repair in this test"})
+                    return self._send(200, reply)
                 if path == "/v1/runs/rid/results":
+                    failed = ("failed", "error")
+
+                    def label(t):
+                        if t["before"] in failed and t["after"] in failed:
+                            return "TEST_WRONG_ON_BEFORE"
+                        if t["before"] in failed:
+                            return "ODD"
+                        return "CATCHES_CHANGE" if t["after"] in failed else "NO_SIGNAL"
+
                     return self._send(200, {"function_id": "fid", "status": body["status"], "tests": [
-                        {"name": t["name"], "label": "X", "diagnosis": None, "reason": None}
+                        {"name": t["name"], "label": label(t), "diagnosis": None, "reason": None}
                         for t in body["tests"]]})
                 if path == "/v1/runs/rid/finish":
                     return self._send(200, {"status": body["status"], "comment_marker": MARKER,

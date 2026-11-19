@@ -55,7 +55,9 @@ def _kind(test: FunctionTestResult) -> str:
         return "flaky"
     if test.label == c.CATCHES_CHANGE and test.diagnosis == c.REAL_BUG:
         return "catches"
-    if test.label in (c.TEST_WRONG_ON_BEFORE, c.ODD):
+    if test.label == c.ODD:
+        return "odd"
+    if test.label == c.TEST_WRONG_ON_BEFORE:
         return "unreliable"
     if _fails_now(test):  # only reachable for an added function: no old code to compare
         return "new_fails"
@@ -72,8 +74,11 @@ def _test_line(test: FunctionTestResult) -> str:
             f"unstable: {_plural(test.rerun_passes, 'rerun')} passed and "
             f"{test.rerun_fails} failed"
         )
-    elif kind == "unreliable" and test.label == c.ODD:
-        text = "fails on the old code but passes on the new code, so the test is odd"
+    elif kind == "odd":
+        text = (
+            "fails on the old code but passes on the new code, so it matches the new behaviour: "
+            "check that this change is intended"
+        )
     elif kind == "unreliable":
         text = "fails on the old code too, so the test itself may be wrong"
     elif kind == "new_fails":
@@ -84,6 +89,18 @@ def _test_line(test: FunctionTestResult) -> str:
     if test.message and kind in ("catches", "flaky", "new_fails", "unreliable") and _fails_now(test):
         line += f"\n  - failure: {_code(test.message, 200)}"
     return line
+
+
+def _repair_note(tests: list[FunctionTestResult]) -> list[str]:
+    rounds = max((t.attempt for t in tests), default=0)
+    if not rounds:
+        return []
+    times = "once" if rounds == 1 else f"{rounds} times"
+    return [
+        f"The AI repaired these tests {times} after some of them failed on the old code too. "
+        "Only the newest version is shown.",
+        "",
+    ]
 
 
 def _function_summary(tests: list[FunctionTestResult]) -> str:
@@ -98,6 +115,8 @@ def _function_summary(tests: list[FunctionTestResult]) -> str:
         parts.append(f"⚠️ <b>{_plural(n, 'test')} {verb} a change</b>")
     if counts.get("flaky"):
         parts.append(f"🎲 {_plural(counts['flaky'], 'unstable test')}")
+    if counts.get("odd"):
+        parts.append(f"🔄 {_plural(counts['odd'], 'test')} match the new behaviour")
     if counts.get("unreliable"):
         parts.append(f"❓ {_plural(counts['unreliable'], 'unreliable test')}")
     if counts.get("new_fails"):
@@ -116,6 +135,7 @@ def _function_block(row: RunFunction, tests: list[FunctionTestResult]) -> list[s
             "<details>",
             f"<summary>{html_title}: {_function_summary(tests)}</summary>",
             "",
+            *_repair_note(tests),
             *[_test_line(t) for t in shown],
         ]
         if len(tests) > len(shown):

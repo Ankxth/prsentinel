@@ -132,12 +132,32 @@ class RunnerProcessTests(unittest.TestCase):
 
 
 @needs_pytest
+class RepairHelperTests(unittest.TestCase):
+    def test_label_matches_the_servers_rule(self):
+        self.assertEqual(tp._label("passed", "failed"), "CATCHES_CHANGE")
+        self.assertEqual(tp._label("passed", "error"), "CATCHES_CHANGE")
+        self.assertEqual(tp._label("failed", "failed"), "TEST_WRONG_ON_BEFORE")
+        self.assertEqual(tp._label("error", "failed"), "TEST_WRONG_ON_BEFORE")
+        self.assertEqual(tp._label("failed", "passed"), "ODD")
+        self.assertEqual(tp._label("passed", "passed"), "NO_SIGNAL")
+        self.assertEqual(tp._label("skipped", "failed"), "CATCHES_CHANGE")  # an added function: no old result
+
+    def test_a_repair_may_not_lose_a_catching_test(self):
+        def t(name, before, after):
+            return {"name": name, "before": before, "after": after}
+        previous = [t("catch", "passed", "failed"), t("wrong", "failed", "failed"), t("same", "passed", "passed")]
+        self.assertEqual(tp.lost_catches(previous, [t("catch", "passed", "failed"), t("wrong", "passed", "failed")]), [])
+        self.assertEqual(tp.lost_catches(previous, [t("wrong", "passed", "passed")]), ["catch"])          # removed
+        self.assertEqual(tp.lost_catches(previous, [t("catch", "passed", "passed")]), ["catch"])          # weakened
+        self.assertEqual(tp.lost_catches(previous, [t("catch", "failed", "failed")]), ["catch"])          # now wrong
+
+
 class EndToEndTests(RunnerBase):
     GOOD = {"status": "generated", "test_code": "from a import f\n\ndef test_f():\n    assert f() == 1\n",
             "import_line": "from a import f", "cached": False, "function_id": "fid", "reason": None}
 
-    def run_with(self, reply):
-        server = FakeServer(generate_reply=reply)
+    def run_with(self, reply, repairs=None):
+        server = FakeServer(generate_reply=reply, repair_replies=repairs)
         self.addCleanup(server.close)
         code = self.go(self.env(server, pr_event(self.first), PRSENTINEL_RUN_TESTS="true"))
         return code, server
@@ -162,6 +182,69 @@ class EndToEndTests(RunnerBase):
         self.assertEqual(sorted(os.listdir(self.repo)), sorted(
             [n for n in os.listdir(self.repo) if n != pr.TEST_DIR]))
         self.assertFalse(os.path.exists(os.path.join(self.repo, pr.TEST_DIR)))
+
+    WRONG = ("from a import f\n\ndef test_catch():\n    assert f() == 1\n\n"
+             "def test_wrong():\n    assert f() == 3\n")
+
+    def generated(self, code):
+        return dict(self.GOOD, test_code=code)
+
+    def repaired(self, wrong_value, keep_catch=True):
+        code = "from a import f\n\n"
+        if keep_catch:
+            code += "def test_catch():\n    assert f() == 1\n\n"
+        code += "def test_wrong():\n    assert f() == %d\n" % wrong_value
+        return {"status": "generated", "test_code": code, "import_line": "from a import f",
+                "function_id": "fid", "reason": None, "attempt": 1}
+
+    def test_a_test_wrong_on_both_versions_is_repaired_and_reported_again(self):
+        code, server = self.run_with(self.generated(self.WRONG), [self.repaired(1)])
+        self.assertEqual(code, 0)
+        (repair,) = self.posted(server, "/repair")
+        body = repair[2]
+        self.assertEqual((body["attempt"], body["old_code"], body["new_code"]),
+                         (1, "def f():\n    return 1\n", "def f():\n    return 2\n"))
+        self.assertEqual([t["name"] for t in body["failing"]], ["test_wrong"])
+        self.assertIn("f() == 3", body["test_code"])
+        self.assertEqual(repair[3], "Bearer run-token")
+        first, second = [r[2] for r in self.posted(server, "/results")]
+        self.assertEqual((first["attempt"], second["attempt"]), (0, 1))
+        got = {t["name"]: (t["before"], t["after"]) for t in second["tests"]}
+        self.assertEqual(got, {"test_catch": ("passed", "failed"), "test_wrong": ("passed", "failed")})
+
+    def test_there_are_at_most_two_repair_rounds(self):
+        _, server = self.run_with(self.generated(self.WRONG), [self.repaired(4), self.repaired(5)])
+        self.assertEqual(len(self.posted(server, "/repair")), 2)
+        attempts = [r[2]["attempt"] for r in self.posted(server, "/results")]
+        self.assertEqual(attempts, [0, 1, 2])
+        self.assertEqual(len(self.posted(server, "/finish")), 1)
+
+    def test_the_second_round_only_runs_while_something_is_still_wrong(self):
+        _, server = self.run_with(self.generated(self.WRONG), [self.repaired(1), self.repaired(9)])
+        self.assertEqual(len(self.posted(server, "/repair")), 1)
+
+    def test_a_repair_that_loses_a_catching_test_is_not_used(self):
+        _, server = self.run_with(self.generated(self.WRONG), [self.repaired(1, keep_catch=False)])
+        self.assertEqual(len(self.posted(server, "/repair")), 1)
+        (only,) = self.posted(server, "/results")
+        self.assertEqual(only[2]["attempt"], 0)
+
+    def test_a_repair_that_cannot_run_is_not_used(self):
+        broken = dict(self.repaired(1), test_code="from a import missing\n\ndef test_x():\n    pass\n")
+        _, server = self.run_with(self.generated(self.WRONG), [broken])
+        (only,) = self.posted(server, "/results")
+        self.assertEqual((only[2]["attempt"], only[2]["status"]), (0, "tested"))
+
+    def test_no_repair_is_asked_for_when_a_test_is_not_wrong_on_both(self):
+        _, server = self.run_with(self.GOOD)
+        self.assertEqual(self.posted(server, "/repair"), [])
+
+    def test_when_the_server_cannot_repair_the_first_results_stay(self):
+        _, server = self.run_with(self.generated(self.WRONG), [
+            {"status": "could_not_generate", "reason": "The AI service is busy."}])
+        (only,) = self.posted(server, "/results")
+        self.assertEqual((only[2]["attempt"], only[2]["status"]), (0, "tested"))
+        self.assertEqual(len(self.posted(server, "/finish")), 1)
 
     def test_no_tests_from_the_server_means_no_results_call(self):
         code, server = self.run_with(None)

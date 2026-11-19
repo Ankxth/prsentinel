@@ -143,3 +143,37 @@ def test_finished_run_is_refused(client, run):
 
 def test_too_many_tests_are_refused(client, run):
     assert post(client, run, [t(f"t{i}", "passed", "passed") for i in range(201)]).status_code == 422
+
+
+# D7: a repaired test file is kept so a later run with the same inputs starts from it.
+def test_a_repaired_file_replaces_the_stored_tests(client, run, db):
+    repaired = "from lib import price\n\ndef test_a():\n    assert price(1) == 2\n"
+    post(client, run, [t("test_a", "failed", "failed")], attempt=0)
+    post(client, run, [t("test_a", "passed", "failed", 0, 3)], attempt=1, test_code=repaired)
+    db.expire_all()
+    assert db.query(RunFunction).filter_by(name="price").one().test_code == repaired
+
+
+@pytest.mark.parametrize("bad", [
+    "def test_a():\n    assert True\n",                      # lost the import line
+    "from lib import price\n\nx = 1\n",                      # no test left
+])
+def test_an_unusable_repaired_file_is_ignored(client, run, db, bad):
+    post(client, run, [t("test_a", "passed", "passed")], attempt=0)
+    before = db.query(RunFunction).filter_by(name="price").one().test_code
+    assert post(client, run, [t("test_a", "passed", "passed")], attempt=1, test_code=bad).status_code == 200
+    db.expire_all()
+    assert db.query(RunFunction).filter_by(name="price").one().test_code == before
+
+
+def test_the_first_attempt_never_replaces_the_stored_tests(client, run, db):
+    ok = "from lib import price\n\ndef test_a():\n    assert True\n"
+    before = db.query(RunFunction).filter_by(name="price").one().test_code
+    post(client, run, [t("test_a", "passed", "passed")], attempt=0, test_code=ok)
+    db.expire_all()
+    assert db.query(RunFunction).filter_by(name="price").one().test_code == before
+
+
+def test_oversized_repaired_file_is_refused(client, run):
+    big = "from lib import price\n\ndef test_a():\n    pass\n" + "#" * 31_000
+    assert post(client, run, [t("test_a", "passed", "passed")], attempt=1, test_code=big).status_code == 422

@@ -166,6 +166,7 @@ Request: `{"file": "a.py", "name": "f", "status": "tested" | "could_not_test", "
   characters. It is untrusted text: show it in a code span
 - `could_not_test` (or an empty `tests` list) is stored as "no result", never as a pass; `reason` is at most 300 characters
 - `attempt` is the repair round (0 = the first tests); sending the same attempt again replaces it. At most 200 tests
+- `test_code` (optional, D7): the repaired test file that produced these results, sent with `attempt` 1 or 2. The server keeps it as the function's stored tests, so a later run with the same inputs (see `cached` under `/generate`) starts from the repaired file. It is ignored when it lost the import line or has no test, and for `attempt` 0. At most 30000 characters
 
 Response 200: `{"function_id": "...", "status": "tested" | "could_not_test", "reason": null | "...",
 "tests": [{"name": "test_f", "label": "CATCHES_CHANGE", "diagnosis": "REAL_BUG", "reason": "..."}]}`.
@@ -194,8 +195,8 @@ Errors: 404 not one of this run's changes, 409 run finished or the function cann
 
 What the runner does with the answer: runs the repaired file on the new and the old code, and only when
 **every test that caught the change before still catches it** posts it to `/results` with `attempt` set to
-the round number. Otherwise the repair is dropped and the first results stay. The server stores no
-repaired file, so a later run that reuses cached tests starts again from the first version.
+the round number. Otherwise the repair is dropped and the first results stay. The server keeps the
+repaired file only when the runner sends it back as `test_code` with the repaired results (D7); without it a later run that reuses cached tests starts again from the first version.
 
 ### `POST /v1/runs/{run_id}/mutation` (auth: run token, run must still be `running`)
 

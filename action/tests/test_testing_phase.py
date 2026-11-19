@@ -209,6 +209,8 @@ class EndToEndTests(RunnerBase):
         self.assertEqual(repair[3], "Bearer run-token")
         first, second = [r[2] for r in self.posted(server, "/results")]
         self.assertEqual((first["attempt"], second["attempt"]), (0, 1))
+        self.assertNotIn("test_code", first)  # only repaired files are sent back for storage
+        self.assertIn("def test_wrong", second["test_code"])
         got = {t["name"]: (t["before"], t["after"]) for t in second["tests"]}
         self.assertEqual(got, {"test_catch": ("passed", "failed"), "test_wrong": ("passed", "failed")})
 

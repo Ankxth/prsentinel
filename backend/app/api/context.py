@@ -23,6 +23,7 @@ from app.db.models.accounts import Repo, User
 from app.db.models.context import ContextEdge, ContextFile
 from app.db.models.runs import Run
 from app.db.session import get_db
+from app.services.context_engine import pack as context_pack
 from app.services.context_engine import store
 from app.services.context_engine.store import ContextError
 
@@ -282,3 +283,30 @@ def get_context(
             for row in rows
         ],
     )
+
+
+class PackOut(BaseModel):
+    found: bool
+    pack: dict
+    text: str
+
+
+@router.get("/v1/repos/{repo_id}/context/pack", response_model=PackOut)
+def get_pack(
+    repo_id: UUID,
+    file: str,
+    function: str,
+    budget: int = 3000,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """A preview of the context pack the test generator would receive for one function."""
+    repo = db.scalar(select(Repo).where(Repo.id == repo_id, Repo.owner_user_id == user.id))
+    if repo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found.")
+    built = context_pack.get_context_pack(db, repo.id, file, function, budget)
+    if not built.found:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="That function is not in the code map."
+        )
+    return PackOut(found=True, pack=built.to_dict(), text=built.render())

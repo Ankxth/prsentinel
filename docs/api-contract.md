@@ -150,3 +150,7 @@ its request and response shapes when you build it.
 (status `empty` | `building` | `complete`, `built_from_sha`, `latest_run_sha`, `partial`, `repo_facts`,
 `edges` = number of calls per state `{resolved, external, unresolved}`, up to 1000 files with symbol and call counts). Auth is the user's Supabase sign-in,
 and only the owner's runs are visible (others get 404).
+
+`GET /v1/repos/{id}/context/pack?file=&function=&budget=3000` previews the context pack (see
+`get_context_pack` in `context.md` section 5.4) for one function: `{found, pack, text}`; 404 if the repo is
+not the caller's or the function is not in the map.

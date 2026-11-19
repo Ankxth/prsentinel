@@ -102,3 +102,54 @@ export type Run = {
 };
 
 export const listRuns = (repoId: string) => apiFetch<Run[]>(`/v1/repos/${repoId}/runs`);
+
+export type ContextFile = {
+  path: string;
+  is_test: boolean;
+  parse_error: string | null;
+  symbols: number;
+  calls: number;
+};
+
+export type ContextMap = {
+  status: "empty" | "building" | "complete" | string;
+  built_from_sha: string | null;
+  latest_run_sha: string | null;
+  partial: boolean;
+  total_files: number;
+  skipped_files: number;
+  repo_facts: { test_framework?: string; python_files?: number; test_files?: number };
+  file_count: number;
+  edges: { resolved: number; external: number; unresolved: number };
+  files: ContextFile[];
+};
+
+export type ContextSymbol = {
+  name: string;
+  kind: "function" | "class" | string;
+  signature: string;
+  doc: string;
+  lines: number[];
+};
+
+export type ContextFileDetail = {
+  path: string;
+  is_test: boolean;
+  parse_error: string | null;
+  symbols: ContextSymbol[];
+};
+
+export type ContextPackPreview = {
+  found: boolean;
+  text: string;
+  pack: { token_estimate: number; budget: number; truncated: Record<string, number> };
+};
+
+export const getContext = (repoId: string) => apiFetch<ContextMap>(`/v1/repos/${repoId}/context`);
+export const getContextFile = (repoId: string, path: string) =>
+  apiFetch<ContextFileDetail>(`/v1/repos/${repoId}/context/file?path=${encodeURIComponent(path)}`);
+export const getContextPack = (repoId: string, file: string, fn: string, budget = 3000) =>
+  apiFetch<ContextPackPreview>(
+    `/v1/repos/${repoId}/context/pack?file=${encodeURIComponent(file)}` +
+      `&function=${encodeURIComponent(fn)}&budget=${budget}`,
+  );

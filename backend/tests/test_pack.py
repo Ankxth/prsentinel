@@ -144,3 +144,21 @@ def test_preview_endpoint_hides_other_users_repos(client, make_token, built):
     unsigned = client.get(f"/v1/repos/{built.id}/context/pack",
                           params={"file": "lib.py", "function": "price"})
     assert unsigned.status_code == 401
+
+
+def test_file_detail_endpoint(client, make_token, built):
+    url = f"/v1/repos/{built.id}/context/file"
+    response = client.get(url, params={"path": "lib.py"}, headers=alice(make_token, built))
+    assert response.status_code == 200
+    body = response.json()
+    assert [s["name"] for s in body["symbols"]] == ["price", "tax"]
+    assert body["symbols"][0]["signature"] == "(item)" and body["symbols"][0]["lines"] == [1, 3]
+    missing = client.get(url, params={"path": "nope.py"}, headers=alice(make_token, built))
+    assert missing.status_code == 404
+
+
+def test_file_detail_endpoint_hides_other_users_repos(client, make_token, built):
+    url = f"/v1/repos/{built.id}/context/file"
+    assert client.get(url, params={"path": "lib.py"},
+                      headers=bearer(make_token(login="bob"))).status_code == 404
+    assert client.get(url, params={"path": "lib.py"}).status_code == 401

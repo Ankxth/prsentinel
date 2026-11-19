@@ -2,7 +2,7 @@
 
 The one shared briefing for every chat and contributor working on PRSentinel.
 Read this first. Then read only the feature card(s) you are working on.
-Last updated: 2026-11-19 (context engine: context pack built)
+Last updated: 2026-11-19 (context engine: dashboard code map view)
 
 Plain words first, industry terms in (brackets).
 
@@ -154,7 +154,7 @@ These are the seams. Change one only through the Requests board (section 11), be
 - `GET/POST /v1/repos`, `DELETE /v1/repos/{id}`
 - `GET /v1/repos/{id}/runs`, `GET /v1/runs/{id}`
 - `GET /v1/repos/{id}/findings`, `PATCH /v1/findings/{id}`
-- `GET /v1/repos/{id}/context`, `GET /v1/usage`
+- `GET /v1/repos/{id}/context`, `GET /v1/repos/{id}/context/file?path=`, `GET /v1/repos/{id}/context/pack?file=&function=&budget=`, `GET /v1/usage`
 
 **5.3 Public:** `GET /badge/{owner}/{repo}.svg`, `GET /public/{owner}/{repo}`, `GET /health`
 
@@ -254,7 +254,7 @@ Update your row when you start, finish, or get blocked. Statuses: `not started`,
 | Foundation (repo layout, CI, skeletons) | done | v1 frozen in `bench/v1-capstone`; backend `/health`, frontend skeleton, CI jobs added; pushed to GitHub |
 | A Accounts and repositories | done | Backend done: tables applied to Supabase, token check, `GET /v1/me`, `GET/POST/DELETE /v1/repos` with tests (55 backend tests pass). Frontend sign-in and repos pages work end to end (user tested: sign in, add, remove, rows appear and disappear in Supabase). Delete-my-account built (59 backend tests). Setup snippet and per-repo runs list built (user verified in the dashboard). Left (small): cache the public check |
 | B The Action | in progress | Server side built: GitHub token check, `runs` table (migration `0003`), run token, `POST /v1/runs`, `POST /v1/runs/{id}/finish`, dashboard run views, `docs/api-contract.md` (94 backend tests). Migration 0003 applied; backend deployed on Render (`https://prsentinel-21ho.onrender.com`). Action v0 built and tested on real GitHub with `Ankxth/prsentinel-demo` (see change log): finds changed functions, starts and finishes a run, posts one PR comment and updates it on new pushes, reports "could not run" honestly. Test generation and scanners are not wired in yet. Dashboard runs list built; fork-PR skip verified with a real fork. Next: pinger |
-| C Context engine | in progress | C1 done (runner fact extractor, `action/runner/facts.py`). C2 server side done: tables (migration `0004`, applied), manifest, files and commit endpoints, dashboard `GET /v1/repos/{id}/context` (118 backend tests). C2b done: the runner uploads the map on every run (34 Action tests, verified on real GitHub). C3 done: call graph built on every commit (migration `0005`, applied, verified in Supabase). C4 done: `get_context_pack` (143 backend tests). Next: dashboard view (C5), AI summaries with a separate Groq key (C6) |
+| C Context engine | in progress | C1 done (runner fact extractor, `action/runner/facts.py`). C2 server side done: tables (migration `0004`, applied), manifest, files and commit endpoints, dashboard `GET /v1/repos/{id}/context` (118 backend tests). C2b done: the runner uploads the map on every run (34 Action tests, verified on real GitHub). C3 done: call graph built on every commit (migration `0005`, applied, verified in Supabase). C4 done: `get_context_pack` (143 backend tests). C5 done: dashboard "Code map" view (145 backend tests). Next: AI summaries with a separate Groq key (C6) |
 | D Test generation and diagnosis | not started | Reuse map in section 4 |
 | E Vulnerability module | not started | E1 scanners first, E3 agent later |
 | F LLM management | not started | First feature needing the LLM builds the minimal router |
@@ -302,7 +302,8 @@ Each card: purpose, depends on, provides, key files, first steps, done when.
 - **Also done:** C2b `action/runner/context_sync.py` (manifest, upload only needed files in batches, commit; called from `main.py` before finish; any failure is a warning and never fails the run). `facts.config_hints` sends `pytest_config`.
 - **Also done (C3):** `app/services/context_engine/graph.py` turns stored facts into links; `store.rebuild_edges` runs inside `commit_build` (whole graph rebuilt each commit, since a change in one file can change links in another). Each link is `resolved` (one place in the repo), `external` (built-in, standard library, installed package) or `unresolved` (never guessed). It resolves same-file names, `self.method()` including inherited methods, imports (relative, aliased, re-exported through `__init__.py`). It does NOT resolve calls on variables (`obj.method()`), the type is unknown from names alone. Migration `0005` adds `status` and `line` to `context_edges`. Accuracy test: `tests/test_graph.py` (22 hand-labelled calls: 21 correct, 1 missed, 0 wrong). Coverage on this repo's `backend/` (1001 calls): 270 resolved, 347 external, 384 unresolved. Callers of a function = edges with that `dst_path`/`dst_symbol`.
 - **Also done (C4):** `app/services/context_engine/pack.py` (`get_context_pack`, `ContextPack.render`), preview endpoint `GET /v1/repos/{id}/context/pack`, `tests/test_pack.py`. A class pack includes the calls made by its methods; callers that are test files are listed under `tests`; fixtures come from the covering test files and every `conftest.py`.
-- **Steps left:** C5 dashboard context view (files, symbols, callers and callees, pack preview, freshness); C6 summaries (needs the minimal LLM router from F).
+- **Also done (C5):** dashboard "Code map" section in the repo panel (`frontend/src/components/ContextView.tsx`, calls in `lib/api.ts`): status and partial badges, freshness (built commit vs latest run), file list, click a file to see its symbols, click a symbol to see the exact context pack text. New endpoint `GET /v1/repos/{id}/context/file?path=`. "N commits behind" is not shown (it would need the GitHub API); the view says when a newer run has not finished updating the map.
+- **Steps left:** C6 summaries (needs the minimal LLM router from F).
 - **Done when (P2 exit):** context updates on every push; the three-way ablation (single prompt vs pipeline vs pipeline + context) is run and reported, positive or negative.
 
 ### D. Test generation and failure diagnosis
@@ -345,6 +346,7 @@ Format: `- [open] 2026-11-18 | from <feature> to <feature> | what and why`
 
 Newest first. Add a line when you change a contract, a table, a convention, or finish a milestone.
 
+- 2026-11-19 | C | C5: dashboard "Code map" view and `GET /v1/repos/{id}/context/file?path=` (owner-only, symbols of one file). Other features: add your own sections to the repo panel next to `ContextView` in `RepoPanel.tsx`.
 - 2026-11-19 | C | C4: `get_context_pack` (service, see 5.4) and the owner-only preview `GET /v1/repos/{id}/context/pack`. No table or contract change for the Action. Features D and E: call `get_context_pack` instead of reading `context_*` tables yourselves.
 - 2026-11-19 | C | C3: call graph. `context_edges` gets `status` (`resolved` | `external` | `unresolved`) and `line` (migration `0005`; apply it only AFTER the new code is pushed). Edges are rebuilt from all stored files on every context commit (`store.rebuild_edges`). `kind` is `call` or `import`; `src_symbol` is the qualified enclosing function (`Class.method`, `<module>` for module level). `GET /v1/repos/{id}/context` now also returns `edges` (call counts per status). Features D and E: to find the callers of a function query `context_edges` where `dst_path` and `dst_symbol` match; unresolved links mean "unknown", not "none".
 - 2026-11-19 | C | C2b: the runner keeps the server's code map up to date on every run (`action/runner/context_sync.py`: manifest, then facts for only the files the server needs in batches of at most `max_batch_files` and about 1.5 MB, then commit). A map failure (for example 409 or server error) prints a warning and the run still completes. Needs the server deployed with migration 0004 applied; until then runs show a warning and still work. Feature D and E: no contract change.

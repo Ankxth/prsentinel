@@ -310,3 +310,48 @@ def get_pack(
             status_code=status.HTTP_404_NOT_FOUND, detail="That function is not in the code map."
         )
     return PackOut(found=True, pack=built.to_dict(), text=built.render())
+
+
+class SymbolOut(BaseModel):
+    name: str
+    kind: str
+    signature: str
+    doc: str
+    lines: list[int]
+
+
+class FileDetailOut(BaseModel):
+    path: str
+    is_test: bool
+    parse_error: str | None
+    symbols: list[SymbolOut]
+
+
+@router.get("/v1/repos/{repo_id}/context/file", response_model=FileDetailOut)
+def get_context_file(
+    repo_id: UUID,
+    path: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """The functions and classes the code map holds for one file (names and signatures only)."""
+    repo = db.scalar(select(Repo).where(Repo.id == repo_id, Repo.owner_user_id == user.id))
+    if repo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found.")
+    row = db.scalar(
+        select(ContextFile).where(ContextFile.repo_id == repo.id, ContextFile.path == path)
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not in the code map.")
+    return FileDetailOut(
+        path=row.path,
+        is_test=row.is_test,
+        parse_error=row.parse_error,
+        symbols=[
+            SymbolOut(
+                name=s["name"], kind=s["kind"], signature=s.get("signature") or "",
+                doc=s.get("doc") or "", lines=list(s["lines"]),
+            )
+            for s in (row.symbols or [])
+        ],
+    )

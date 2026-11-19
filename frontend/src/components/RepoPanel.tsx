@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { listRuns, PUBLIC_API_URL, type Repo, type Run } from "../lib/api";
+import ContextView from "./ContextView";
 
 function workflowText(): string {
   return `name: prsentinel
@@ -134,6 +135,7 @@ export default function RepoPanel({ repo }: { repo: Repo }) {
   return (
     <div className="panel">
       <RunsList repo={repo} />
+      <ContextView repo={repo} />
       <SetupSnippet />
     </div>
   );

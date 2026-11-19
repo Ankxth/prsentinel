@@ -154,3 +154,6 @@ and only the owner's runs are visible (others get 404).
 `GET /v1/repos/{id}/context/pack?file=&function=&budget=3000` previews the context pack (see
 `get_context_pack` in `context.md` section 5.4) for one function: `{found, pack, text}`; 404 if the repo is
 not the caller's or the function is not in the map.
+
+`GET /v1/repos/{id}/context/file?path=` lists one file's symbols (`name`, `kind`, `signature`, `doc`, `lines`) from the
+code map; 404 if the repo is not the caller's or the file is not in the map.

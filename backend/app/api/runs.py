@@ -152,7 +152,7 @@ def finish_run(
     return FinishOut(
         status=run.status,
         comment_marker=COMMENT_MARKER,
-        comment_markdown=build_comment(run, repo.full_name),
+        comment_markdown=build_comment(run, repo.full_name, db),
     )
 
 

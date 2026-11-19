@@ -99,3 +99,16 @@ def rule_classify(
             "so this falls back to looking at the test."
         ),
     }
+
+
+NEW_FUNCTION_REASON = (
+    "This function is new, so there is no old behaviour to compare against. "
+    "A failing test is reported as a test to check, not as a bug."
+)
+
+
+def classify_new_function(after_result: str, rerun_passes: int = 0, rerun_fails: int = 0) -> dict:
+    """For an ADDED function there is no old version, so a failure cannot be called a real bug."""
+    if rerun_passes and rerun_fails:
+        return rule_classify(PASSED, after_result, rerun_passes, rerun_fails)
+    return {"diagnosis": BAD_TEST, "reason": NEW_FUNCTION_REASON}

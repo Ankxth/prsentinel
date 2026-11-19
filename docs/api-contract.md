@@ -144,11 +144,37 @@ model were seen before in this repo and the stored tests were reused (no model c
 
 Errors: 404 the function is not one of this run's changes, 409 run already finished, 422 the function was deleted.
 
+### `POST /v1/runs/{run_id}/results` (auth: run token, run must still be `running`)
+
+Reports what happened when the runner ran the tests that `/generate` returned for one function. The
+server labels the results with fixed rules (no AI): `CATCHES_CHANGE` (passes on the old code, fails on
+the new), `TEST_WRONG_ON_BEFORE` (fails on both), `NO_SIGNAL` (passes on both), `ODD` (fails on the old,
+passes on the new). A test that fails on the new code also gets a diagnosis: `REAL_BUG`, `BAD_TEST` or
+`FLAKY` (the reruns passed at least once and failed at least once).
+
+Request: `{"file": "a.py", "name": "f", "status": "tested" | "could_not_test", "reason": null | "...",
+"attempt": 0, "tests": [{"name": "test_f", "before": "passed", "after": "failed", "rerun_passes": 0,
+"rerun_fails": 3, "message": "assert 2 == 1" | null}]}`
+- results are `passed` | `failed` | `error` | `skipped`; anything else counts as `error`, never as a pass
+- `before` is the result on the old code. For an `added` function there is no old code: the server stores
+  `skipped`, labels every test `NO_SIGNAL` and never calls a failure `REAL_BUG` (it says `BAD_TEST`, with a
+  reason that the function is new)
+- `rerun_*` count reruns of a failing test on the new code (the runner uses 3)
+- `message` is the failure text from the new-code run; the server removes file paths and cuts it to 1500
+  characters. It is untrusted text: show it in a code span
+- `could_not_test` (or an empty `tests` list) is stored as "no result", never as a pass; `reason` is at most 300 characters
+- `attempt` is the repair round (0 = the first tests); sending the same attempt again replaces it. At most 200 tests
+
+Response 200: `{"function_id": "...", "status": "tested" | "could_not_test", "reason": null | "...",
+"tests": [{"name": "test_f", "label": "CATCHES_CHANGE", "diagnosis": "REAL_BUG", "reason": "..."}]}`.
+Errors: 404 not one of this run's changes, 409 run finished or no tests were generated for that function,
+422 bad body.
+
 ### Reserved for other features (not built yet)
 
 | Endpoint | Owner | Purpose |
 |---|---|---|
-| `POST /v1/runs/{run_id}/results` | D, E | upload test results and scanner output |
+| `POST /v1/runs/{run_id}/results` (scanner output) | E | extended later for scanner output |
 | `POST /v1/runs/{run_id}/findings/{fid}/agent/step` | E | proof-agent ping-pong |
 
 All of them authenticate with `Depends(current_run)` (see `backend/app/core/run_token.py`), which

@@ -14,6 +14,7 @@ import client  # noqa: E402
 import comment  # noqa: E402
 import context_sync  # noqa: E402
 import diff  # noqa: E402
+import testing_phase  # noqa: E402
 
 CONTRACT_VERSION = 1
 SERVER_WAIT_SECONDS = 150  # free hosting needs about a minute to wake up
@@ -129,6 +130,18 @@ def run(env):
             annotate("warning", "PRSentinel could not update the code map: %s" % err.detail)
         except Exception as err:
             annotate("warning", "PRSentinel could not update the code map: %s" % err)
+
+        # Generated tests are a bonus too: any problem here means "no result", never a pass.
+        if (env.get("PRSENTINEL_RUN_TESTS") or "true").lower() == "true":
+            try:
+                tested = testing_phase.run(
+                    api_url, run_id, run_token, functions, base, os.getcwd(),
+                    started.get("limits", {}).get("max_functions", 50), kwargs, log, annotate)
+                log("PRSentinel: tests: %d tested, %d no tests written, %d could not run, %d skipped."
+                    % (tested["tested"], tested["could_not_generate"], tested["could_not_test"],
+                       tested["skipped"]))
+            except Exception as err:
+                annotate("warning", "PRSentinel could not run the tests: %s" % err)
 
         finished = client.request_json(
             "POST", "%s/v1/runs/%s/finish" % (api_url, run_id), token=run_token,

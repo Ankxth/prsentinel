@@ -80,7 +80,8 @@ class FakeServer:
     """Pretends to be the PRSentinel server, the GitHub token endpoint and the GitHub API."""
 
     def __init__(self, fail_first_runs=0, existing_comments=None, runs_status=None,
-                 context_status=None, known=(), batch_limit=100):
+                 context_status=None, known=(), batch_limit=100, generate_reply=None):
+        self.generate_reply = generate_reply
         self.context_status = context_status
         self.known = set(known)
         self.batch_limit = batch_limit
@@ -134,6 +135,14 @@ class FakeServer:
                         return self._send(200, {"saved": len(body["files"])})
                     return self._send(200, {"status": "complete", "built_from_sha": "x",
                                             "partial": False, "python_files": 1})
+                if path == "/v1/runs/rid/generate":
+                    reply = outer.generate_reply or {"status": "could_not_generate",
+                                                     "reason": "no model in this test"}
+                    return self._send(200, reply)
+                if path == "/v1/runs/rid/results":
+                    return self._send(200, {"function_id": "fid", "status": body["status"], "tests": [
+                        {"name": t["name"], "label": "X", "diagnosis": None, "reason": None}
+                        for t in body["tests"]]})
                 if path == "/v1/runs/rid/finish":
                     return self._send(200, {"status": body["status"], "comment_marker": MARKER,
                                             "comment_markdown": MARKER + "\n### PRSentinel\nhi"})
@@ -179,6 +188,7 @@ class RunnerBase(unittest.TestCase):
             "ACTIONS_ID_TOKEN_REQUEST_URL": server.url + "/oidc?x=1",
             "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "req-token",
             "PRSENTINEL_RETRY_PAUSE": "0", "PRSENTINEL_WAIT_SECONDS": "5",
+            "PRSENTINEL_RUN_TESTS": "false",
         }
         env.update(extra)
         return env

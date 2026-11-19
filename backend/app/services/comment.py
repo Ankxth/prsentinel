@@ -5,6 +5,8 @@ With a database session the comment also shows what happened to the AI-written t
 changed function (feature D4). A function with no result is listed as "not tested", never as
 passed."""
 
+import html
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,6 +25,12 @@ AI_NOTE = "Tests are AI-generated. A catching test is a hint, not proof."
 def _code(text: object, limit: int = 120) -> str:
     cleaned = " ".join(str(text).replace("`", "'").split())[:limit]
     return f"`{cleaned}`"
+
+
+def _html_code(text: object, limit: int = 120) -> str:
+    """Like _code, but as HTML: GitHub does not render Markdown inside <summary>."""
+    cleaned = " ".join(str(text).split())[:limit]
+    return f"<code>{html.escape(cleaned)}</code>"
 
 
 def _plural(count: int, word: str) -> str:
@@ -85,7 +93,9 @@ def _function_summary(tests: list[FunctionTestResult]) -> str:
         counts[kind] = counts.get(kind, 0) + 1
     parts = []
     if counts.get("catches"):
-        parts.append(f"⚠️ **{_plural(counts['catches'], 'test')} catch a change**")
+        n = counts["catches"]
+        verb = "catches" if n == 1 else "catch"
+        parts.append(f"⚠️ <b>{_plural(n, 'test')} {verb} a change</b>")
     if counts.get("flaky"):
         parts.append(f"🎲 {_plural(counts['flaky'], 'unstable test')}")
     if counts.get("unreliable"):
@@ -99,11 +109,12 @@ def _function_summary(tests: list[FunctionTestResult]) -> str:
 
 def _function_block(row: RunFunction, tests: list[FunctionTestResult]) -> list[str]:
     title = f"{_code(row.file + '::' + row.name)} ({_code(row.change_type, 20)})"
+    html_title = f"{_html_code(row.file + '::' + row.name)} ({_html_code(row.change_type, 20)})"
     if row.status == "tested" and tests:
         shown = tests[:MAX_TESTS_SHOWN]
         lines = [
             "<details>",
-            f"<summary>{title}: {_function_summary(tests)}</summary>",
+            f"<summary>{html_title}: {_function_summary(tests)}</summary>",
             "",
             *[_test_line(t) for t in shown],
         ]

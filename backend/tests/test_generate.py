@@ -86,6 +86,13 @@ def test_prompt_treats_repo_text_as_data_and_never_names_the_right_version():
     assert "intended behaviour" in text  # old behaviour is the specification
     new_fn = generator.build_messages("lib.py", "price", None, NEW, "")[1]["content"]
     assert "this function is new" in new_fn and "no code map" in new_fn
+    assert "what is different between the OLD CODE and the NEW CODE" in text  # aim at the change
+    assert "pytest.raises" in text
+    assert "what is different between" not in new_fn  # an added function has no old code to compare
+
+
+def test_prompt_version_changed_with_the_wording():
+    assert generator.PROMPT_VERSION == "d2-2"
 
 
 # ------------------------------------------------------------------ the endpoint

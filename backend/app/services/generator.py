@@ -15,7 +15,7 @@ inside the user's own GitHub Actions job.
 import hashlib
 import re
 
-PROMPT_VERSION = "d2-1"  # change when the wording changes, so cached answers are not reused
+PROMPT_VERSION = "d2-2"  # change when the wording changes, so cached answers are not reused
 MAX_CODE_CHARS = 20_000  # each of old_code / new_code
 MAX_TEST_CHARS = 30_000
 MAX_OUTPUT_TOKENS = 3000
@@ -55,6 +55,22 @@ def cache_key(old_code: str, new_code: str, pack_text: str, model: str) -> str:
     return digest.hexdigest()
 
 
+def change_focus(old_code: str) -> list[str]:
+    """Extra instructions for a changed function: aim at what differs between old and new."""
+    if not old_code:
+        return []
+    return [
+        "- First work out exactly what is different between the OLD CODE and the NEW CODE (a "
+        "removed check, a changed condition, a different return value, a new branch). Write at "
+        "least one test aimed at that difference: give an input that the OLD code handled in one "
+        "way and the NEW code may handle differently.",
+        "- If the OLD code or its docstring promises behaviour for special inputs (for example "
+        "raising an error on zero or on empty input), write a test for each promise, using "
+        "`pytest.raises` when an error is promised.",
+        "- Do not write only ordinary, everyday inputs. Ordinary cases alone cannot show a change.",
+    ]
+
+
 def build_messages(file: str, name: str, old_code: str | None, new_code: str, pack_text: str):
     old_code = (old_code or "")[:MAX_CODE_CHARS]
     new_code = new_code[:MAX_CODE_CHARS]
@@ -83,6 +99,7 @@ def build_messages(file: str, name: str, old_code: str | None, new_code: str, pa
         "- Check that the function still does what the OLD version did. The OLD behaviour is the "
         "intended behaviour; treat it as the specification.",
         "- Look for anything the change could have made worse.",
+        *change_focus(old_code),
         "- Include the edge cases the change may have affected, such as empty input, one item, "
         "zero, and values larger or smaller than expected.",
         "",

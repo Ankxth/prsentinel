@@ -29,6 +29,12 @@ from app.services.context_engine import pack as context_pack
 from app.services.context_engine import store, summaries
 from app.services.context_engine.store import ContextError
 from app.services.llm import LLMError, get_llm
+from app.services.llm_usage import (
+    SUMMARY_PURPOSE,
+    AllowanceUsed,
+    check_summary_allowance,
+    record,
+)
 
 router = APIRouter(tags=["context"])
 
@@ -395,8 +401,23 @@ def write_file_summary(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="AI features are switched off for this repository.",
         )
+    settings = get_settings()
+
+    def metered(purpose, messages, **options):
+        """The model call, paid from the summaries allowance. A summary that is already stored and
+        current never gets here, so reading one stays free even when the allowance is used up."""
+        check_summary_allowance(db, repo, settings)
+        answer = complete(purpose, messages, **options)
+        record(db, repo, SUMMARY_PURPOSE, answer)
+        return answer
+
     try:
-        result = summaries.get_file_summary(db, repo.id, path, complete)
+        result = summaries.get_file_summary(db, repo.id, path, metered)
+    except AllowanceUsed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="No summary: today's allowance for file summaries has been used up.",
+        ) from None
     except summaries.SummaryError as error:
         raise HTTPException(status_code=error.status, detail=error.detail) from None
     except LLMError as error:

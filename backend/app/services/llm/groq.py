@@ -22,11 +22,11 @@ def _model_options(model: str) -> dict:
     return {}
 
 
-def _error(kind: str, message: str):
+def _error(kind: str, message: str, retryable: bool = False):
     # Imported here to avoid a circular import; the error type lives in the package root.
     from app.services.llm import LLMError
 
-    return LLMError(kind, message)
+    return LLMError(kind, message, retryable=retryable)
 
 
 def _reason(response) -> str:
@@ -54,16 +54,18 @@ def chat(*, api_key: str, model: str, messages: list[dict], max_tokens: int, tim
             timeout=timeout,
         )
     except httpx.HTTPError:
-        raise _error("unavailable", "Could not reach the AI service. Try again.") from None
+        raise _error("unavailable", "Could not reach the AI service. Try again.", retryable=True) from None
 
     if response.status_code == 429:
-        raise _error("rate_limited", "The AI service is busy. Try again in a minute.")
+        raise _error("rate_limited", "The AI service is busy. Try again in a minute.", retryable=True)
     if response.status_code in (401, 403):
         raise _error("unavailable", "The AI service did not accept this server's key.")
     if response.status_code != 200:
         log.warning("groq refused the request: status=%s model=%s reason=%s",
                     response.status_code, model, _reason(response))
-        raise _error("unavailable", "The AI service returned an unexpected answer. Try again.")
+        # A server-side error (5xx) can pass by itself; a refusal of our request (4xx) will not.
+        raise _error("unavailable", "The AI service returned an unexpected answer. Try again.",
+                     retryable=response.status_code >= 500)
 
     try:
         data = response.json()

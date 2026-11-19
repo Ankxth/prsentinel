@@ -75,10 +75,25 @@ class Settings(BaseSettings):
     groq_model: str = "openai/gpt-oss-120b"
     groq_model_summaries: str = "openai/gpt-oss-20b"
     llm_timeout_seconds: float = 20.0
+    # Fallback provider for the `default` budget only (test generation, vulnerability checks).
+    # Check https://ai.google.dev/gemini-api/docs/models for the names your key can use.
+    gemini_model: str = "gemini-2.5-flash"
+    # Retries and the circuit breaker (feature F). A busy or failing provider is retried after the
+    # waits below, then the next provider is tried. One call never takes much longer than the
+    # total budget. After `llm_breaker_failures` failed calls in a row a provider is skipped for
+    # `llm_breaker_seconds` (kept in memory, so a server restart clears it).
+    llm_retry_waits: tuple[float, ...] = (1.0, 3.0)
+    llm_total_budget_seconds: float = 60.0
+    llm_breaker_failures: int = 3
+    llm_breaker_seconds: float = 60.0
     # Daily allowance (UTC day), counted in tokens (input + output) from `llm_usage`.
     # When one is used up, test generation ends with "no result, allowance used", never a fake pass.
     llm_daily_tokens_per_repo: int = 150_000
     llm_daily_tokens_per_user: int = 300_000
+    # File summaries (C6) have their own, smaller allowance, counted apart from the one above so
+    # they can never use up what test generation needs.
+    llm_daily_summary_tokens_per_repo: int = 40_000
+    llm_daily_summary_tokens_per_user: int = 80_000
 
 
 @lru_cache

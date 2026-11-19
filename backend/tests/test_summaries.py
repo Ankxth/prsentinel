@@ -225,3 +225,84 @@ def test_removing_the_repo_removes_its_summaries(client, make_token, db, built, 
     db.delete(built)
     db.commit()
     assert db.query(ContextFile).count() == 0
+
+
+# ---- the daily allowance for summaries (F) ------------------------------------------------------
+
+
+def set_summary_cap(monkeypatch, per_repo, per_user=1000):
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("LLM_DAILY_SUMMARY_TOKENS_PER_REPO", str(per_repo))
+    monkeypatch.setenv("LLM_DAILY_SUMMARY_TOKENS_PER_USER", str(per_user))
+    get_settings.cache_clear()
+
+
+def forget_summary(db, repo):
+    """Make the stored summary out of date so the next ask has to call the model again."""
+    stored = row(db, repo)
+    stored.summary = None
+    db.commit()
+
+
+def test_a_written_summary_is_counted_in_the_summaries_allowance_only(
+    client, make_token, db, built, fake
+):
+    from app.db.models.llm_usage import LLMUsage
+    from app.services.llm_usage import summaries_used_today, used_today
+
+    ask(client, make_token, built)
+    (usage,) = db.query(LLMUsage).all()
+    assert (usage.purpose, usage.model, usage.input_tokens, usage.output_tokens) == (
+        "file_summary", "fake-1", 10, 8)
+    assert summaries_used_today(db, built) == {"repo": 18, "user": 18}
+    assert used_today(db, built) == {"repo": 0, "user": 0}  # test generation is untouched
+
+
+def test_when_the_summaries_allowance_is_used_a_new_summary_is_refused(
+    client, make_token, db, built, fake, monkeypatch
+):
+    set_summary_cap(monkeypatch, per_repo=15)  # one summary costs 18
+    assert ask(client, make_token, built).status_code == 200
+    forget_summary(db, built)
+    response = ask(client, make_token, built)
+    assert response.status_code == 429 and "allowance" in response.json()["detail"]
+    assert len(fake.calls) == 1 and row(db, built).summary is None
+
+
+def test_the_per_person_summaries_allowance_also_applies(
+    client, make_token, db, built, fake, monkeypatch
+):
+    set_summary_cap(monkeypatch, per_repo=1000, per_user=15)
+    assert ask(client, make_token, built).status_code == 200
+    forget_summary(db, built)
+    assert ask(client, make_token, built).status_code == 429
+
+
+def test_reading_a_current_summary_stays_free_after_the_allowance_is_used(
+    client, make_token, built, fake, monkeypatch
+):
+    set_summary_cap(monkeypatch, per_repo=15)
+    assert ask(client, make_token, built).status_code == 200
+    again = ask(client, make_token, built)
+    assert again.status_code == 200 and again.json()["generated"] is False
+    assert len(fake.calls) == 1
+
+
+def test_a_failed_model_call_is_not_counted(client, make_token, db, built, fake):
+    from app.db.models.llm_usage import LLMUsage
+
+    fake.error = llm.LLMError("unavailable", "Some safe message.")
+    assert ask(client, make_token, built).status_code == 502
+    assert db.query(LLMUsage).count() == 0
+
+
+def test_used_up_summaries_do_not_block_test_generation(db, built):
+    from app.core.config import get_settings
+    from app.services.llm_usage import check_allowance, record
+
+    class Spent:
+        model, input_tokens, output_tokens = "m", 10**6, 0
+
+    record(db, built, "file_summary", Spent())
+    check_allowance(db, built, get_settings())  # raises AllowanceUsed if summaries were counted

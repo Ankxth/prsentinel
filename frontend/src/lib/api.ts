@@ -103,6 +103,58 @@ export type Run = {
 
 export const listRuns = (repoId: string) => apiFetch<Run[]>(`/v1/repos/${repoId}/runs`);
 
+export type TestView = {
+  name: string;
+  /** catches | flaky | odd | unreliable | new_fails | same (the same buckets as the PR comment) */
+  kind: "catches" | "flaky" | "odd" | "unreliable" | "new_fails" | "same" | string;
+  label: string;
+  diagnosis: string | null;
+  before: string;
+  after: string;
+  rerun_passes: number;
+  rerun_fails: number;
+  /** Failure text from the repo's own test run: untrusted, show as plain text. */
+  message: string | null;
+};
+
+export type MutationView =
+  | { status: "not_measured"; reason: string }
+  | {
+      status: "measured";
+      killed: number;
+      survived: number;
+      percent: number;
+      equivalent: number;
+      could_not_run: number;
+      capped: boolean;
+      stopped_early: boolean;
+      survivors: string[];
+      note: string;
+    };
+
+export type RunFunctionView = {
+  id: string;
+  file: string;
+  name: string;
+  change_type: string;
+  status: string;
+  reason: string | null;
+  counts: Record<string, number>;
+  repair_rounds: number;
+  tests: TestView[];
+  mutation: MutationView | null;
+};
+
+export type RunView = {
+  run_id: string;
+  status: "running" | "completed" | "failed" | "could_not_run" | string;
+  reason: string | null;
+  ai_note: string;
+  functions: RunFunctionView[];
+};
+
+export const getRunFunctions = (runId: string) => apiFetch<RunView>(`/v1/runs/${runId}/functions`);
+
 export type ContextFile = {
   path: string;
   is_test: boolean;

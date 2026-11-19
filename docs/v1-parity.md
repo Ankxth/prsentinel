@@ -51,9 +51,9 @@ product behaviour 345 (covered 69, partly 209, gap 67). 111 + 495 + 45 + 345 = 9
 3. Repair edge cases from `test_repair.py` that still apply (a real bug or a flaky test is never repaired away: in v2 only `TEST_WRONG_ON_BEFORE` tests are sent, so check each of those v1 rules against that).
 4. After feature F: retries, daily-limit stop, Gemini fallback tests.
 
-## Proposed change to the "done when" of feature D
+## Decision on the "done when" of feature D (2026-11-20)
 
-Reproducing all 996 tests is not a sensible target: 111 test a retired app and 495 test the evaluation
-harness. Proposal: "every row above marked product behaviour is **covered**, the gaps 1 to 3 are closed, and
-`v1-suite` stays green." This is a decision for the project owner; the card in `context.md` still shows the
-original wording until it is decided.
+Reproducing all 996 tests is not a target: 111 test a retired app and 495 test the evaluation harness. The
+project owner decided that this map is a **reference only**. Feature D is done when it works as its card in
+`context.md` describes; the gaps above are optional work, to be picked up when a behaviour looks at risk.
+`v1-suite` stays green on the frozen archive.

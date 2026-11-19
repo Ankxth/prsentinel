@@ -212,6 +212,26 @@ class EndToEndTests(RunnerBase):
         got = {t["name"]: (t["before"], t["after"]) for t in second["tests"]}
         self.assertEqual(got, {"test_catch": ("passed", "failed"), "test_wrong": ("passed", "failed")})
 
+    def test_the_mutation_check_runs_on_the_old_code_and_is_reported(self):
+        code, server = self.run_with(self.GOOD)
+        self.assertEqual(code, 0)
+        (mut,) = self.posted(server, "/mutation")
+        body = mut[2]
+        self.assertEqual((body["file"], body["name"], body["status"]), ("a.py", "f", "measured"))
+        self.assertGreaterEqual(body["killed"], 1)  # `return 1` to `return 2` / `return None`
+        self.assertEqual(body["survived"], 0)
+        self.assertEqual(mut[3], "Bearer run-token")
+        # the old code is only ever touched in the throwaway checkout, never in the user's tree
+        with open(os.path.join(self.repo, "a.py"), encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "def f():\n    return 2\n")
+
+    def test_the_mutation_check_uses_the_repaired_tests(self):
+        code, server = self.run_with(self.generated(self.WRONG), [self.repaired(1)])
+        self.assertEqual(code, 0)
+        (mut,) = self.posted(server, "/mutation")
+        self.assertEqual(mut[2]["status"], "measured")
+        self.assertGreaterEqual(mut[2]["killed"], 1)
+
     def test_there_are_at_most_two_repair_rounds(self):
         _, server = self.run_with(self.generated(self.WRONG), [self.repaired(4), self.repaired(5)])
         self.assertEqual(len(self.posted(server, "/repair")), 2)

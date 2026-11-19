@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import AccountSection from "./components/AccountSection";
 import ReposPage from "./components/ReposPage";
+import RunPanel from "./components/RunView";
 import SignIn from "./components/SignIn";
 import { getMe, type Me } from "./lib/api";
+import { closeRunPage, restoreRunLink, useRunIdFromHash } from "./lib/route";
 import { supabase } from "./lib/supabase";
 import { useSession } from "./lib/useSession";
 
@@ -10,12 +12,14 @@ export default function App() {
   const { session, loading } = useSession();
   const [me, setMe] = useState<Me | null>(null);
   const [meError, setMeError] = useState<string | null>(null);
+  const runId = useRunIdFromHash();
 
   // Once signed in, ask the backend who we are. This also creates the user row on first visit.
   useEffect(() => {
     setMe(null);
     setMeError(null);
     if (!session) return;
+    restoreRunLink();
     getMe()
       .then(setMe)
       .catch((e: Error) => setMeError(e.message));
@@ -54,12 +58,20 @@ export default function App() {
           <button onClick={() => supabase!.auth.signOut()}>Sign out and try again</button>
         </section>
       ) : (
-        me && (
+        me &&
+        (runId ? (
+          <section className="card">
+            <button className="link" onClick={closeRunPage}>
+              ← All repositories
+            </button>
+            <RunPanel runId={runId} onClose={closeRunPage} />
+          </section>
+        ) : (
           <>
             <ReposPage />
             <AccountSection login={me.github_login} />
           </>
-        )
+        ))
       )}
     </main>
   );

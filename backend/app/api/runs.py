@@ -137,6 +137,7 @@ def finish_run(
     body: FinishIn,
     run: Run = Depends(current_run),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     if run.status != "running":
         raise HTTPException(
@@ -152,7 +153,7 @@ def finish_run(
     return FinishOut(
         status=run.status,
         comment_marker=COMMENT_MARKER,
-        comment_markdown=build_comment(run, repo.full_name, db),
+        comment_markdown=build_comment(run, repo.full_name, db, settings.public_dashboard_url),
     )
 
 

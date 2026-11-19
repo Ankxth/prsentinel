@@ -13,13 +13,28 @@ from sqlalchemy.orm import Session
 from app.db.models.run_functions import FunctionTestResult, RunFunction
 from app.db.models.runs import Run
 from app.services import classifier as c
+from app.services.findings import SCANNER_NOTE, count_origins, load_findings, scanner_rows
 
 COMMENT_MARKER = "<!-- prsentinel-comment -->"
 MAX_LISTED = 10  # functions listed when there are no test results to show
 MAX_FUNCTIONS_SHOWN = 15  # functions shown with test results
 MAX_TESTS_SHOWN = 8  # tests listed inside one function's details
 MAX_COMMENT_CHARS = 60_000  # GitHub refuses comments above 65,536
+MAX_FINDINGS_SHOWN = 10  # scanner findings listed in the comment (all are on the dashboard)
+SEVERITY_ICON = {"high": "🔴", "medium": "🟠", "low": "🟡", "unknown": "⚪"}
 AI_NOTE = "Tests are AI-generated. A catching test is a hint, not proof."
+
+
+def dashboard_link(base_url: str | None, run_id: object) -> str | None:
+    """Address of one run's page in the dashboard, or None when no usable address is set.
+    Only plain http(s) addresses are used, so a mistyped or hostile setting cannot put a
+    script link or markup into a comment."""
+    base = (base_url or "").strip().rstrip("/")
+    if not base.lower().startswith(("http://", "https://")):
+        return None
+    if any(ch.isspace() or ch in "<>()[]`\"'#" for ch in base):
+        return None
+    return f"{base}/#/runs/{run_id}"
 
 
 def _code(text: object, limit: int = 120) -> str:
@@ -205,7 +220,72 @@ def _tested_section(rows: list[RunFunction], tests: list[FunctionTestResult]) ->
     return lines
 
 
-def build_comment(run: Run, repo_full_name: str, db: Session | None = None) -> str:
+def _security_section(run: Run, db: Session) -> list[str]:
+    """Scanner results (feature E1). Only findings that are new (or could not be compared with the
+    old code) are listed; findings that already existed are only counted. A scanner that could
+    not run is said so, and "no findings" is never worded as "safe"."""
+    scanners = scanner_rows(run)
+    rows = load_findings(db, run.id)
+    if not scanners and not rows:
+        return []
+
+    lines = ["#### Security checks", ""]
+    parts = []
+    for s in scanners:
+        tool = _code(s.get("tool", "?"), 20)
+        if s.get("status") == "ran":
+            note = f" ({_code(s['reason'], 150)})" if s.get("reason") else ""
+            parts.append(f"{tool} ran{note}")
+        else:
+            reason = _code(s.get("reason") or "no reason was given", 150)
+            parts.append(f"⚠️ {tool} **could not run** ({reason})")
+    if parts:
+        lines += ["Scanners: " + " · ".join(parts), ""]
+
+    counts = count_origins(rows)
+    ran_any = any(s.get("status") == "ran" for s in scanners)
+    if counts["new"]:
+        text = f"**{counts['new']} new** finding(s) introduced by this commit"
+        if counts["existing"]:
+            text += f"; {counts['existing']} already existed before it"
+        if counts["unknown"]:
+            text += f"; {counts['unknown']} could not be compared with the old code"
+        lines.append(text + ".")
+    elif counts["unknown"]:
+        lines.append(
+            f"Found {counts['unknown']} finding(s), but the old code could not be scanned, "
+            "so nobody can tell whether this commit introduced them."
+        )
+    elif ran_any:
+        text = "No new findings in this commit."
+        if counts["existing"]:
+            text += f" {counts['existing']} finding(s) already existed before it."
+        lines.append(text)
+    else:
+        lines.append("No scanner ran, so nothing was checked. This is **not** a pass.")
+    lines.append("")
+
+    listed = [f for f in rows if f.origin in ("new", "unknown")]
+    for f in listed[:MAX_FINDINGS_SHOWN]:
+        where = f.file or "?"
+        if f.line:
+            where += f":{f.line}"
+        icon = SEVERITY_ICON.get(f.severity, "⚪")
+        lines.append(
+            f"- {icon} {_code(f.rule_id, 60)} ({_code(f.tool, 20)}, {f.severity}) in "
+            f"{_code(where, 150)}: {_code(f.message, 200)}"
+        )
+    if len(listed) > MAX_FINDINGS_SHOWN:
+        lines.append(f"- … and {len(listed) - MAX_FINDINGS_SHOWN} more (see the dashboard)")
+    if listed:
+        lines.append("")
+    lines += [f"<sub>{SCANNER_NOTE}</sub>", ""]
+    return lines
+
+
+def build_comment(
+    run: Run, repo_full_name: str, db: Session | None = None, dashboard_url: str | None = None
+) -> str:
     summary = run.summary or {}
     functions = summary.get("changed_functions") or []
     files = summary.get("changed_files", 0)
@@ -228,6 +308,10 @@ def build_comment(run: Run, repo_full_name: str, db: Session | None = None) -> s
     lines = [COMMENT_MARKER, "### PRSentinel", ""]
     lines.append(f"Commit {_code(run.sha[:7])} in {_code(repo_full_name)}")
     lines.append("")
+    link = dashboard_link(dashboard_url, run.id)
+    if link:
+        lines.append(f"[View full details in the dashboard]({link})")
+        lines.append("")
 
     if run.status == "could_not_run":
         reason = summary.get("reason") or "no reason was given"
@@ -261,6 +345,12 @@ def build_comment(run: Run, repo_full_name: str, db: Session | None = None) -> s
                 "No test results were reported for these functions, so nothing was tested. "
                 "This is **not** a pass."
             )
+
+    if db is not None and run.status == "completed":
+        security = _security_section(run, db)
+        if security:
+            lines.append("")
+            lines += security
 
     lines.append("")
     lines.append("<sub>PRSentinel results are automated hints, not proof.</sub>")

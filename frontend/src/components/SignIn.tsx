@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { rememberRunLink } from "../lib/route";
 import { supabase } from "../lib/supabase";
 
 export default function SignIn() {
@@ -6,6 +7,7 @@ export default function SignIn() {
 
   async function signIn() {
     setError(null);
+    rememberRunLink();
     const { error } = await supabase!.auth.signInWithOAuth({
       provider: "github",
       options: { redirectTo: window.location.origin },

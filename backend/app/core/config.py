@@ -26,6 +26,9 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     frontend_origin: str = "http://localhost:5173"
+    # Public address of the dashboard (for example https://prsentinel.example.com). When set, the
+    # PR comment links each run to its page there. Empty means no link is added.
+    public_dashboard_url: str = ""
 
     database_url: SecretStr | None = None
 

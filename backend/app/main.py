@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.api import (
     context,
+    findings,
     generate,
     health,
     me,
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(repair.router)
     app.include_router(mutation.router)
     app.include_router(run_view.router)
+    app.include_router(findings.router)
     return app
 
 

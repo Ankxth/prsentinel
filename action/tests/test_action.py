@@ -145,6 +145,9 @@ class FakeServer:
                     reply = (outer.repair_replies.pop(0) if outer.repair_replies else
                              {"status": "could_not_generate", "reason": "no repair in this test"})
                     return self._send(200, reply)
+                if path == "/v1/runs/rid/findings":
+                    return self._send(200, {"saved": len(body["findings"]), "new": 0,
+                                            "existing": 0, "unknown": 0})
                 if path == "/v1/runs/rid/mutation":
                     return self._send(200, {"function_id": "fid", "status": body["status"],
                                             "score": None})
@@ -206,7 +209,7 @@ class RunnerBase(unittest.TestCase):
             "ACTIONS_ID_TOKEN_REQUEST_URL": server.url + "/oidc?x=1",
             "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "req-token",
             "PRSENTINEL_RETRY_PAUSE": "0", "PRSENTINEL_WAIT_SECONDS": "5",
-            "PRSENTINEL_RUN_TESTS": "false",
+            "PRSENTINEL_RUN_TESTS": "false", "PRSENTINEL_RUN_SCANNERS": "false",
         }
         env.update(extra)
         return env

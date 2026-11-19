@@ -197,6 +197,28 @@ What the runner does with the answer: runs the repaired file on the new and the 
 the round number. Otherwise the repair is dropped and the first results stay. The server stores no
 repaired file, so a later run that reuses cached tests starts again from the first version.
 
+### `POST /v1/runs/{run_id}/mutation` (auth: run token, run must still be `running`)
+
+Reports the mutation check of one function (feature D6). The runner makes small deliberate faults
+(`+` to `-`, `<` to `<=`, `True` to `False`, and so on) in the OLD version of the changed function, inside
+its throwaway checkout of the old commit, and runs the FINAL tests (after any repair) against each fault.
+Only tests that pass on the plain old code count. Only `modified` functions are checked.
+
+Request: `{"file": "a.py", "name": "f", "status": "measured" | "not_measured", "reason": null | "...",
+"found": 5, "capped": false, "stopped_early": false, "killed": 3, "survived": 1, "equivalent": 1,
+"timed_out": 0, "could_not_run": 0, "survivors": ["< to <="]}`
+- `killed`: a test that passes on the old code failed on the faulty version. `survived`: no test noticed.
+  `equivalent`: the fault left the function exactly as it was. `timed_out` and `could_not_run` are kept
+  out of the score. At most 20 faults are tried per function (`capped`) and about 90 seconds are spent
+  (`stopped_early`)
+- the server works out `score = killed / (killed + survived)`; with nothing scored, or `not_measured`
+  (for example no test passes on the old code), it stores "not measured" and no score, never a good one
+- `survivors` are at most 10 names of faults the tests missed; they are untrusted text
+
+Response 200: `{"function_id": "...", "status": "measured" | "not_measured", "score": 0.75 | null}`.
+Errors: 404 not one of this run's changes, 409 run finished or the function has no test results, 422 bad body.
+The comment shows the counts and always says the score is a lower bound (some faults change nothing).
+
 ### Reserved for other features (not built yet)
 
 | Endpoint | Owner | Purpose |

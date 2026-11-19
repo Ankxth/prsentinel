@@ -13,6 +13,7 @@ import time
 
 import client
 import diff
+import mutation
 import pytest_runner as pr
 
 RERUN_TIMES = 3
@@ -183,11 +184,36 @@ def _one(api_url, run_id, token, item, number, base, root, old_root, rerun_times
         return "could_not_test"
     if change == "modified" and old_code:
         try:  # a repair problem must never take away the results that were already reported
-            _repair(api_url, run_id, token, item, old_code, new_code, code, file_name, tests, reply,
-                    root, old_root, rerun_times, kwargs, log)
+            code, tests = _repair(api_url, run_id, token, item, old_code, new_code, code, file_name,
+                                  tests, reply, root, old_root, rerun_times, kwargs, log)
         except Exception as err:
             log("PRSentinel: %s::%s: the repair stopped: %s" % (path, name, err))
+        if old_root is not None:
+            try:  # the mutation check is extra information: a problem here changes nothing else
+                _mutation(api_url, run_id, token, item, code, file_name, old_root, kwargs, log)
+            except Exception as err:
+                log("PRSentinel: %s::%s: the mutation check stopped: %s" % (path, name, err))
     return "tested"
+
+
+def _mutation(api_url, run_id, token, item, code, file_name, old_root, kwargs, log):
+    """Run the mutation check on the final tests and report the counts to the server."""
+    result = mutation.run_mutation(old_root, item["file"], item["name"], code, file_name)
+    body = {"file": item["file"], "name": item["name"], "status": result["status"],
+            "reason": result["reason"] or None, "found": result["found"],
+            "capped": result["capped"], "stopped_early": result["stopped_early"],
+            "killed": result["killed"], "survived": result["survived"],
+            "equivalent": result["equivalent"], "timed_out": result["timed_out"],
+            "could_not_run": result["could_not_run"], "survivors": result["survivors"]}
+    client.request_json("POST", "%s/v1/runs/%s/mutation" % (api_url, run_id), token=token,
+                        body=body, **kwargs)
+    if result["status"] == "measured":
+        log("PRSentinel: %s::%s: mutation check: %d killed, %d survived, %d equivalent"
+            % (item["file"], item["name"], result["killed"], result["survived"],
+               result["equivalent"]))
+    else:
+        log("PRSentinel: %s::%s: mutation check not measured: %s"
+            % (item["file"], item["name"], result["reason"]))
 
 
 def _run_both(root, old_root, code, file_name, change, rerun_times):
@@ -239,7 +265,7 @@ def _repair(api_url, run_id, token, item, old_code, new_code, code, file_name, t
     for attempt in range(1, MAX_REPAIR_ROUNDS + 1):
         failing = [t for t in tests if labels.get(t["name"]) == "TEST_WRONG_ON_BEFORE"]
         if not failing:
-            return
+            return code, tests
         try:
             fixed = client.request_json(
                 "POST", "%s/v1/runs/%s/repair" % (api_url, run_id), token=token, timeout=120,
@@ -250,21 +276,21 @@ def _repair(api_url, run_id, token, item, old_code, new_code, code, file_name, t
                 **kwargs)
         except client.ApiError as err:
             log("PRSentinel: %s::%s: repair not possible: %s" % (path, name, err.detail))
-            return
+            return code, tests
         if fixed.get("status") != "generated":
             log("PRSentinel: %s::%s: repair not possible: %s" % (path, name, fixed.get("reason")))
-            return
+            return code, tests
         before, after, problem = _run_both(root, old_root, fixed["test_code"], file_name,
                                            "modified", rerun_times)
         if problem:
             log("PRSentinel: %s::%s: repair not used: %s" % (path, name, problem))
-            return
+            return code, tests
         repaired = build_tests(before, after)
         lost = lost_catches(tests, repaired)
         if lost:
             log("PRSentinel: %s::%s: repair not used, it changed a test that caught the change (%s)"
                 % (path, name, ", ".join(lost[:3])))
-            return
+            return code, tests
         again = _post_results(api_url, run_id, token, {
             "file": path, "name": name, "status": "tested", "attempt": attempt,
             "tests": repaired}, kwargs)
@@ -272,3 +298,4 @@ def _repair(api_url, run_id, token, item, old_code, new_code, code, file_name, t
         labels = {t["name"]: t["label"] for t in again.get("tests", [])}
         log("PRSentinel: %s::%s: repaired (round %d): %s" % (path, name, attempt, ", ".join(
             "%s=%s" % (t["name"], t["label"]) for t in again.get("tests", [])[:5])))
+    return code, tests

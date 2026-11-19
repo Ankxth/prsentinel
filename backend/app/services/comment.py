@@ -103,6 +103,39 @@ def _repair_note(tests: list[FunctionTestResult]) -> list[str]:
     ]
 
 
+def _mutation_lines(row: RunFunction) -> list[str]:
+    """One line about the mutation check, with the honest caveat. Empty when never reported."""
+    m = row.mutation
+    if not m:
+        return []
+    if m.get("status") != "measured" or m.get("score") is None:
+        reason = m.get("reason") or "no reason was given"
+        return [f"Mutation check: not measured ({_code(reason, 150)}).", ""]
+    killed, survived = int(m.get("killed", 0)), int(m.get("survived", 0))
+    percent = round(100 * killed / (killed + survived)) if killed + survived else 0
+    line = (
+        f"Mutation check: the tests caught {killed} of {killed + survived} small deliberate "
+        f"faults ({percent}%)."
+    )
+    extra = []
+    if m.get("equivalent"):
+        extra.append(f"{m['equivalent']} changed nothing and were left out")
+    if m.get("timed_out") or m.get("could_not_run"):
+        extra.append(f"{int(m.get('timed_out', 0)) + int(m.get('could_not_run', 0))} could not be run")
+    if m.get("capped"):
+        extra.append("only the first faults were tried")
+    if m.get("stopped_early"):
+        extra.append("stopped early because of the time limit")
+    if extra:
+        line += " (" + "; ".join(extra) + ")"
+    lines = [line]
+    survivors = [str(s) for s in (m.get("survivors") or [])][:5]
+    if survivors:
+        lines.append("Faults the tests missed: " + ", ".join(_code(s, 40) for s in survivors) + ".")
+    lines.append("The score is a lower bound: some faults change nothing, so no test could catch them.")
+    return lines + [""]
+
+
 def _function_summary(tests: list[FunctionTestResult]) -> str:
     counts: dict[str, int] = {}
     for test in tests:
@@ -140,7 +173,9 @@ def _function_block(row: RunFunction, tests: list[FunctionTestResult]) -> list[s
         ]
         if len(tests) > len(shown):
             lines.append(f"- … and {len(tests) - len(shown)} more")
-        lines += ["", "</details>", ""]
+        lines += [""]
+        lines += _mutation_lines(row)
+        lines += ["</details>", ""]
         return lines
     if row.status in ("skipped", "could_not_generate", "could_not_test"):
         reason = row.reason or "no reason was given"

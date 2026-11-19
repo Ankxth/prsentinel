@@ -145,6 +145,9 @@ class FakeServer:
                     reply = (outer.repair_replies.pop(0) if outer.repair_replies else
                              {"status": "could_not_generate", "reason": "no repair in this test"})
                     return self._send(200, reply)
+                if path == "/v1/runs/rid/mutation":
+                    return self._send(200, {"function_id": "fid", "status": body["status"],
+                                            "score": None})
                 if path == "/v1/runs/rid/results":
                     failed = ("failed", "error")
 

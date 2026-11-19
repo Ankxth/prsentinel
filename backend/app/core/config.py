@@ -69,8 +69,10 @@ class Settings(BaseSettings):
     # generation and the vulnerability checks depend on. There is no fallback to GROQ_API_KEY:
     # without this key, summaries are simply switched off.
     groq_api_key_summaries: SecretStr | None = None
-    groq_model: str = "llama-3.1-8b-instant"
-    groq_model_summaries: str = "llama-3.1-8b-instant"
+    # llama-3.1-8b-instant was retired on Groq (404 model_not_found, 2026-11-19). Check
+    # https://console.groq.com/docs/models for what your key can use.
+    groq_model: str = "openai/gpt-oss-20b"
+    groq_model_summaries: str = "openai/gpt-oss-20b"
     llm_timeout_seconds: float = 20.0
 
 

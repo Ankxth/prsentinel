@@ -1,8 +1,25 @@
 """Groq's chat API (OpenAI-compatible). One fixed address, nothing the user types is ever used in it."""
 
+import logging
+
 import httpx
 
+log = logging.getLogger("prsentinel.llm")
+
 URL = "https://api.groq.com/openai/v1/chat/completions"
+
+
+def _model_options(model: str) -> dict:
+    """Settings that keep "thinking" models short and return only the final answer.
+
+    Groq's reasoning models think before they answer. Their thinking can use up a small token
+    limit, so it is kept low and left out of the reply (see console.groq.com/docs/reasoning).
+    """
+    if model.startswith("openai/gpt-oss"):
+        return {"reasoning_effort": "low", "include_reasoning": False}
+    if model.startswith("qwen/qwen3"):
+        return {"reasoning_effort": "none", "reasoning_format": "hidden"}
+    return {}
 
 
 def _error(kind: str, message: str):
@@ -10,6 +27,15 @@ def _error(kind: str, message: str):
     from app.services.llm import LLMError
 
     return LLMError(kind, message)
+
+
+def _reason(response) -> str:
+    """Groq's own explanation of a refusal (never contains our key), cut short, for the server log."""
+    try:
+        message = response.json()["error"]["message"]
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return "no explanation in the answer"
+    return " ".join(str(message).split())[:300]
 
 
 def chat(*, api_key: str, model: str, messages: list[dict], max_tokens: int, timeout: float) -> dict:
@@ -21,8 +47,9 @@ def chat(*, api_key: str, model: str, messages: list[dict], max_tokens: int, tim
             json={
                 "model": model,
                 "messages": messages,
-                "max_tokens": max_tokens,
+                "max_completion_tokens": max_tokens,
                 "temperature": 0.2,
+                **_model_options(model),
             },
             timeout=timeout,
         )
@@ -34,6 +61,8 @@ def chat(*, api_key: str, model: str, messages: list[dict], max_tokens: int, tim
     if response.status_code in (401, 403):
         raise _error("unavailable", "The AI service did not accept this server's key.")
     if response.status_code != 200:
+        log.warning("groq refused the request: status=%s model=%s reason=%s",
+                    response.status_code, model, _reason(response))
         raise _error("unavailable", "The AI service returned an unexpected answer. Try again.")
 
     try:

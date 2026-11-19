@@ -58,8 +58,8 @@ def test_summaries_use_their_own_key_and_model(monkeypatch, groq):
     call = groq.calls[0]
     assert call["url"] == "https://api.groq.com/openai/v1/chat/completions"
     assert call["headers"]["Authorization"] == "Bearer summary-key"
-    assert call["json"]["model"] == "llama-3.1-8b-instant"
-    assert call["json"]["messages"] == MESSAGES and call["json"]["max_tokens"] == 250
+    assert call["json"]["model"] == "openai/gpt-oss-20b"
+    assert call["json"]["messages"] == MESSAGES and call["json"]["max_completion_tokens"] == 250
     assert call["timeout"] == 20.0
     assert (result.text, result.provider, result.input_tokens, result.output_tokens) == (
         "A short answer.", "groq", 12, 5)
@@ -126,3 +126,30 @@ def test_missing_usage_numbers_are_zero(monkeypatch, groq):
     groq.response = FakeResponse(200, body={"choices": [{"message": {"content": "ok"}}]})
     result = llm.complete("file_summary", MESSAGES, budget_key="summaries")
     assert (result.text, result.input_tokens, result.output_tokens) == ("ok", 0, 0)
+
+
+def test_a_refusal_is_logged_with_groqs_reason_but_not_shown_to_the_user(monkeypatch, groq, caplog):
+    set_keys(monkeypatch, summaries="super-secret-key")
+    groq.response = FakeResponse(400, body={"error": {"message": "The model `old-model` has been decommissioned."}})
+    with caplog.at_level("WARNING", logger="prsentinel.llm"):
+        with pytest.raises(llm.LLMError) as error:
+            llm.complete("file_summary", MESSAGES, budget_key="summaries")
+    assert "status=400" in caplog.text and "decommissioned" in caplog.text
+    assert "super-secret-key" not in caplog.text and "decommissioned" not in str(error.value)
+
+
+def test_thinking_models_are_told_to_think_little_and_hide_it(monkeypatch, groq):
+    set_keys(monkeypatch, summaries="summary-key")
+    llm.complete("file_summary", MESSAGES, budget_key="summaries")
+    body = groq.calls[0]["json"]
+    assert body["reasoning_effort"] == "low" and body["include_reasoning"] is False
+
+
+def test_other_models_get_no_reasoning_options(monkeypatch, groq):
+    set_keys(monkeypatch, summaries="summary-key")
+    monkeypatch.setenv("GROQ_MODEL_SUMMARIES", "some/plain-model")
+    get_settings.cache_clear()
+    llm.complete("file_summary", MESSAGES, budget_key="summaries")
+    body = groq.calls[0]["json"]
+    assert "reasoning_effort" not in body and "include_reasoning" not in body
+    assert body["model"] == "some/plain-model"

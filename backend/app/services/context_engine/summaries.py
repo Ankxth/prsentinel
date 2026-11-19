@@ -25,7 +25,8 @@ from app.services import llm
 MAX_FACT_CHARS = 6000
 MAX_SUMMARY_CHARS = 600
 MAX_IMPORTS = 30
-MAX_OUTPUT_TOKENS = 250
+# Generous on purpose: a model that thinks first spends part of this before it writes the answer.
+MAX_OUTPUT_TOKENS = 700
 
 SYSTEM_PROMPT = (
     "You write a short description of one Python file for a developer dashboard. "

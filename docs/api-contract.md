@@ -172,6 +172,31 @@ Response 200: `{"function_id": "...", "status": "tested" | "could_not_test", "re
 Errors: 404 not one of this run's changes, 409 run finished or no tests were generated for that function,
 422 bad body.
 
+### `POST /v1/runs/{run_id}/repair` (auth: run token, run must still be `running`)
+
+Fixes tests that fail on the OLD code too (label `TEST_WRONG_ON_BEFORE`): such a test is most likely wrong,
+because the old code is the intended behaviour. The runner sends those tests and their failure text; the
+server asks the AI for a fixed test file. The server never runs it.
+
+Request: `{"file": "a.py", "name": "f", "attempt": 1, "old_code": "...", "new_code": "...",
+"test_code": "<the tests as they are now>", "failing": [{"name": "test_f", "before": "failed",
+"after": "failed", "message": "assert 4 == 5" | null}]}`
+- `attempt` is the repair round being asked for: 1 or 2 (at most 2 rounds per function; 0 is the first tests)
+- `failing` has 1 to 20 tests. Failure text is cleaned like `/results` messages and is data for the AI, never instructions
+- only a `modified` function whose first results were reported can be repaired (409 otherwise)
+
+Response 200: `{"function_id": "...", "status": "generated" | "could_not_generate", "reason": null | "...",
+"test_code": "..." | null, "attempt": 1, "import_line": "from a import f"}`.
+`could_not_generate` covers every AI-side problem (no opt-in, allowance used, model busy, unusable answer, the
+fixed file lost the import line or has no test) and leaves the function's earlier results as they are. It is
+never a pass; the runner stops repairing that function. The same daily allowance as `/generate` applies.
+Errors: 404 not one of this run's changes, 409 run finished or the function cannot be repaired, 422 bad body.
+
+What the runner does with the answer: runs the repaired file on the new and the old code, and only when
+**every test that caught the change before still catches it** posts it to `/results` with `attempt` set to
+the round number. Otherwise the repair is dropped and the first results stay. The server stores no
+repaired file, so a later run that reuses cached tests starts again from the first version.
+
 ### Reserved for other features (not built yet)
 
 | Endpoint | Owner | Purpose |

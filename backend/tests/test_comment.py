@@ -68,7 +68,8 @@ def test_flaky_unreliable_and_new_function_failures(client, run):
     comment = finish(client, run)
     assert "unstable: 1 rerun passed and 2 failed" in comment
     assert "fails on the old code too, so the test itself may be wrong" in comment
-    assert "fails on the old code but passes on the new code" in comment
+    assert "matches the new behaviour: check that this change is intended" in comment
+    assert "1 test match the new behaviour" in comment and "1 unreliable test" in comment
     assert "fails on this new function, so check the test" in comment
     assert "REAL_BUG" not in comment  # the raw labels are not shown to the reader
 
@@ -116,3 +117,24 @@ def test_hostile_function_names_cannot_break_out_of_the_summary(client, run, db)
     assert "<img" not in comment and comment.count("</summary>") == 1
     assert "&lt;/summary&gt;" in summary
     assert "\n[click]" not in comment
+
+
+def test_a_repaired_function_says_so(client, run):
+    post(client, run, [t("test_a", "failed", "failed", 0, 3)], attempt=0)
+    post(client, run, [t("test_a", "passed", "failed", 0, 3, "assert 1 == 2")], attempt=1)
+    comment = finish(client, run)
+    assert "The AI repaired these tests once" in comment
+    assert "<b>1 test catches a change</b>" in comment
+
+
+def test_two_repair_rounds_are_counted(client, run):
+    post(client, run, [t("test_a", "failed", "failed", 0, 3)], attempt=0)
+    post(client, run, [t("test_a", "failed", "failed", 0, 3)], attempt=1)
+    post(client, run, [t("test_a", "passed", "passed")], attempt=2)
+    comment = finish(client, run)
+    assert "repaired these tests 2 times" in comment and "found no difference" in comment
+
+
+def test_a_run_without_repairs_has_no_repair_note(client, run):
+    post(client, run, [t("test_a", "passed", "failed", 0, 3)])
+    assert "repaired" not in finish(client, run)

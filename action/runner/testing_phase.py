@@ -18,6 +18,8 @@ import pytest_runner as pr
 RERUN_TIMES = 3
 TIME_BUDGET_SECONDS = 600
 MAX_CODE_CHARS = 20_000
+MAX_REPAIR_ROUNDS = 2  # same limit as the server; attempt 0 is the first tests
+MAX_FAILING = 20
 
 
 def is_test_path(path):
@@ -168,26 +170,105 @@ def _one(api_url, run_id, token, item, number, base, root, old_root, rerun_times
         return "could_not_generate"
 
     code, file_name = generated["test_code"], "test_prs_%d.py" % number
+    before, after, problem = _run_both(root, old_root, code, file_name, change, rerun_times)
+    if problem:
+        _could_not_test(api_url, run_id, token, item, problem, kwargs)
+        return "could_not_test"
+    tests = build_tests(before, after)
+    reply = _post_results(api_url, run_id, token, {
+        "file": path, "name": name, "status": "tested", "attempt": 0, "tests": tests}, kwargs)
+    log("PRSentinel: %s::%s: %s" % (path, name, ", ".join(
+        "%s=%s" % (t["name"], t["label"]) for t in reply.get("tests", [])[:5])))
+    if reply.get("status") != "tested":
+        return "could_not_test"
+    if change == "modified" and old_code:
+        try:  # a repair problem must never take away the results that were already reported
+            _repair(api_url, run_id, token, item, old_code, new_code, code, file_name, tests, reply,
+                    root, old_root, rerun_times, kwargs, log)
+        except Exception as err:
+            log("PRSentinel: %s::%s: the repair stopped: %s" % (path, name, err))
+    return "tested"
+
+
+def _run_both(root, old_root, code, file_name, change, rerun_times):
+    """Run the tests on the new code, then on the old code. Returns (before, after, problem)."""
     after = pr.run_in_tree(root, code, file_name, rerun_times=rerun_times)
     if after["status"] != pr.OK:
-        _could_not_test(api_url, run_id, token, item,
-                        "The generated tests could not run on the new code: %s" % after["error"], kwargs)
-        return "could_not_test"
+        return None, None, "The generated tests could not run on the new code: %s" % after["error"]
     before = None
     if change == "modified":
         if old_root is None:
-            _could_not_test(api_url, run_id, token, item,
-                            "The old version of the code could not be checked out.", kwargs)
-            return "could_not_test"
+            return None, None, "The old version of the code could not be checked out."
         before = pr.run_in_tree(old_root, code, file_name)
         if before["status"] == pr.TIMEOUT:
-            _could_not_test(api_url, run_id, token, item,
-                            "The generated tests timed out on the old code.", kwargs)
-            return "could_not_test"
+            return None, None, "The generated tests timed out on the old code."
         # A file that cannot load on the old code means its tests have no old result: errors.
         before = {"tests": before["tests"]} if before["status"] == pr.OK else {"tests": {}}
-    reply = _post_results(api_url, run_id, token, {
-        "file": path, "name": name, "status": "tested", "tests": build_tests(before, after)}, kwargs)
-    log("PRSentinel: %s::%s: %s" % (path, name, ", ".join(
-        "%s=%s" % (t["name"], t["label"]) for t in reply.get("tests", [])[:5])))
-    return "tested" if reply.get("status") == "tested" else "could_not_test"
+    return before, after, None
+
+
+def _label(before, after):
+    """The same rule as the server's `label_for`; the label the server stores is the real one."""
+    failed = (pr.FAILED, pr.ERROR)
+    if before in failed and after in failed:
+        return "TEST_WRONG_ON_BEFORE"
+    if before in failed:
+        return "ODD"
+    if after in failed:
+        return "CATCHES_CHANGE"
+    return "NO_SIGNAL"
+
+
+def lost_catches(previous, repaired):
+    """Names of tests that caught the change before the repair and do not catch it after it.
+
+    A repair may only fix the tests that were wrong on the old code. If it removed or weakened a
+    test that caught the change, it is not accepted.
+    """
+    now = {t["name"]: _label(t["before"], t["after"]) for t in repaired}
+    return [t["name"] for t in previous
+            if _label(t["before"], t["after"]) == "CATCHES_CHANGE"
+            and now.get(t["name"]) != "CATCHES_CHANGE"]
+
+
+def _repair(api_url, run_id, token, item, old_code, new_code, code, file_name, tests, reply,
+            root, old_root, rerun_times, kwargs, log):
+    """Ask the server to fix the tests that fail on the old code too, up to MAX_REPAIR_ROUNDS."""
+    path, name = item["file"], item["name"]
+    labels = {t["name"]: t["label"] for t in reply.get("tests", [])}
+    for attempt in range(1, MAX_REPAIR_ROUNDS + 1):
+        failing = [t for t in tests if labels.get(t["name"]) == "TEST_WRONG_ON_BEFORE"]
+        if not failing:
+            return
+        try:
+            fixed = client.request_json(
+                "POST", "%s/v1/runs/%s/repair" % (api_url, run_id), token=token, timeout=120,
+                body={"file": path, "name": name, "attempt": attempt, "old_code": old_code,
+                      "new_code": new_code, "test_code": code,
+                      "failing": [{"name": t["name"], "before": t["before"], "after": t["after"],
+                                   "message": t["message"]} for t in failing[:MAX_FAILING]]},
+                **kwargs)
+        except client.ApiError as err:
+            log("PRSentinel: %s::%s: repair not possible: %s" % (path, name, err.detail))
+            return
+        if fixed.get("status") != "generated":
+            log("PRSentinel: %s::%s: repair not possible: %s" % (path, name, fixed.get("reason")))
+            return
+        before, after, problem = _run_both(root, old_root, fixed["test_code"], file_name,
+                                           "modified", rerun_times)
+        if problem:
+            log("PRSentinel: %s::%s: repair not used: %s" % (path, name, problem))
+            return
+        repaired = build_tests(before, after)
+        lost = lost_catches(tests, repaired)
+        if lost:
+            log("PRSentinel: %s::%s: repair not used, it changed a test that caught the change (%s)"
+                % (path, name, ", ".join(lost[:3])))
+            return
+        again = _post_results(api_url, run_id, token, {
+            "file": path, "name": name, "status": "tested", "attempt": attempt,
+            "tests": repaired}, kwargs)
+        code, tests = fixed["test_code"], repaired
+        labels = {t["name"]: t["label"] for t in again.get("tests", [])}
+        log("PRSentinel: %s::%s: repaired (round %d): %s" % (path, name, attempt, ", ".join(
+            "%s=%s" % (t["name"], t["label"]) for t in again.get("tests", [])[:5])))

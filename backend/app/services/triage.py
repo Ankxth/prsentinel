@@ -20,7 +20,9 @@ from app.services.findings import clean
 PURPOSE = "finding_triage"
 TRIAGE_TOOLS = ("bandit",)
 # Findings about a hard-coded password: the code around them may hold the password itself.
-SKIP_RULES = ("B105", "B106", "B107")
+# B105 to B107: hard-coded passwords (the code may hold one). B401 to B415: Bandit's "you imported a
+# risky module" warnings; they say nothing about how the module is used, so an opinion is noise.
+SKIP_RULES = ("B105", "B106", "B107") + tuple("B%d" % n for n in range(401, 416))
 MAX_ITEMS = 10
 MAX_SNIPPET_CHARS = 4000
 MAX_OUTPUT_TOKENS = 400

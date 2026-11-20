@@ -68,7 +68,9 @@ TRIAGE_CONTEXT_LINES = 5
 TRIAGE_LINE_MAX = 240
 TRIAGE_SNIPPET_MAX = 3500
 TRIAGE_MAX_FILE_BYTES = 1_000_000
-TRIAGE_SKIP_RULES = ("B105", "B106", "B107")  # hard-coded passwords: the code may hold one
+# B105 to B107: hard-coded passwords (the code may hold one). B401 to B415: "you imported a risky module"
+# warnings, which say nothing about how it is used. Keep in step with SKIP_RULES in the backend.
+TRIAGE_SKIP_RULES = ("B105", "B106", "B107") + tuple("B%d" % n for n in range(401, 416))
 SECRET_LIKE = re.compile(
     r"AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|gh[pousr]_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}"
     r"|(?i:pass(word|wd)?|secret|token|api[_-]?key|private[_-]?key|credential)\w*\s*[:=]\s*['\"][^'\"]{4,}",

@@ -411,7 +411,9 @@ class TriageTests(unittest.TestCase):
                  self.finding(fingerprint="3" * 64, origin="unknown"),
                  self.finding(fingerprint="4" * 64, tool="pip-audit"),
                  self.finding(fingerprint="5" * 64, rule_id="B105"),
-                 self.finding(fingerprint="6" * 64, rule_id="B107")]
+                 self.finding(fingerprint="6" * 64, rule_id="B107"),
+                 self.finding(fingerprint="7" * 64, rule_id="B404"),
+                 self.finding(fingerprint="8" * 64, rule_id="B403")]
         got = [i["fingerprint"] for i in sc.triage_items(found, self.root)]
         self.assertEqual(sorted(got), ["1" * 64, "3" * 64])
 

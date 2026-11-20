@@ -257,7 +257,7 @@ Needs the owner's `llm_opt_in` and counts against the same daily allowance as te
 
 Request: `{"items": [{"fingerprint": "<64 hex>", "snippet": "<1 to 4000 characters>"}]}`, at most 10 items. The
 snippet is about 10 lines of code around the finding (the target line starts with `>>`). The runner never sends a
-file where detect-secrets found something, a line that looks like a secret, or rules B105, B106 and B107. The
+file where detect-secrets found something, a line that looks like a secret, or rules B105 to B107 (hard-coded passwords) and B401 to B415 (import-only warnings). The
 server treats the snippet as untrusted data, uses it only for this call, and does not store it.
 
 Response 200: `{"status": "triaged" | "not_triaged", "reason": "" | "...", "results": [{"fingerprint",

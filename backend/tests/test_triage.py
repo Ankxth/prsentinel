@@ -106,15 +106,16 @@ def test_only_new_bandit_findings_are_judged(client, run, db, fake):
     old = finding(rule="B404", line=1, origin="existing")
     unknown = finding(rule="B101", line=2, origin="unknown")
     password = finding(rule="B105", line=3)
+    imported = finding(rule="B404", line=4)
     secret = finding(tool="detect-secrets", rule="Secret Keyword", file="c.py", line=1, key="s")
     dep = finding(tool="pip-audit", rule="PYSEC-1", file="requirements.txt", line=1, key="d")
     scanners = [scanner("bandit"), scanner("detect-secrets"), scanner("pip-audit")]
-    send(client, run, [new, old, unknown, password, secret, dep], scanners)
-    items = [item(f) for f in (new, old, unknown, password, secret, dep)]
+    send(client, run, [new, old, unknown, password, imported, secret, dep], scanners)
+    items = [item(f) for f in (new, old, unknown, password, imported, secret, dep)]
     items.append({"fingerprint": fp("not a finding"), "snippet": "x = 1\n"})
     out = ask(client, run, items).json()
     assert {r["fingerprint"] for r in out["results"]} == {new["fingerprint"], unknown["fingerprint"]}
-    assert out["skipped"] == 5 and len(fake.calls) == 2
+    assert out["skipped"] == 6 and len(fake.calls) == 2
     assert row(db, old).triage is None and row(db, secret).triage is None
 
 

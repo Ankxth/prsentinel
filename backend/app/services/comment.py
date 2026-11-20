@@ -14,6 +14,8 @@ from app.db.models.run_functions import FunctionTestResult, RunFunction
 from app.db.models.runs import Run
 from app.services import classifier as c
 from app.services.findings import SCANNER_NOTE, count_origins, load_findings, scanner_rows
+from app.services.triage import TRIAGE_NOTE
+from app.services.triage import label as triage_label
 
 COMMENT_MARKER = "<!-- prsentinel-comment -->"
 MAX_LISTED = 10  # functions listed when there are no test results to show
@@ -220,6 +222,15 @@ def _tested_section(rows: list[RunFunction], tests: list[FunctionTestResult]) ->
     return lines
 
 
+def _triage_text(f) -> str:
+    """The AI's opinion on a finding, as a short suffix (E2). A hint, never a verdict."""
+    text = triage_label(f.triage)
+    if not text:
+        return ""
+    reason = f" ({_code(f.triage_reason, 200)})" if f.triage_reason else ""
+    return f" · 🤖 AI: {text}{reason}"
+
+
 def _security_section(run: Run, db: Session) -> list[str]:
     """Scanner results (feature E1). Only findings that are new (or could not be compared with the
     old code) are listed; findings that already existed are only counted. A scanner that could
@@ -274,11 +285,14 @@ def _security_section(run: Run, db: Session) -> list[str]:
         lines.append(
             f"- {icon} {_code(f.rule_id, 60)} ({_code(f.tool, 20)}, {f.severity}) in "
             f"{_code(where, 150)}: {_code(f.message, 200)}"
+            + _triage_text(f)
         )
     if len(listed) > MAX_FINDINGS_SHOWN:
         lines.append(f"- … and {len(listed) - MAX_FINDINGS_SHOWN} more (see the dashboard)")
     if listed:
         lines.append("")
+    if any(f.triage for f in listed[:MAX_FINDINGS_SHOWN]):
+        lines += [f"<sub>{TRIAGE_NOTE}</sub>", ""]
     lines += [f"<sub>{SCANNER_NOTE}</sub>", ""]
     return lines
 

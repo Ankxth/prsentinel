@@ -25,6 +25,7 @@ from app.api import (
     results,
     run_view,
     runs,
+    triage,
 )
 from app.core.config import get_settings
 
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(mutation.router)
     app.include_router(run_view.router)
     app.include_router(findings.router)
+    app.include_router(triage.router)
     return app
 
 

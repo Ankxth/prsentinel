@@ -44,6 +44,12 @@ class Finding(Base):
     fingerprint: Mapped[str] = mapped_column(String(64), index=True)
     origin: Mapped[str] = mapped_column(String(10), default="unknown")
 
+    # AI opinion (E2). Only a hint: it never changes `origin` and never hides a finding.
+    # triage is "likely_real" | "likely_false_positive" | "unsure", or None when nobody judged it.
+    triage: Mapped[str | None] = mapped_column(String(24))
+    triage_reason: Mapped[str | None] = mapped_column(String(300))
+    triage_model: Mapped[str | None] = mapped_column(String(80))
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

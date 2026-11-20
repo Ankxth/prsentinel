@@ -3,6 +3,7 @@ survive moved code, new-versus-old, honest "could not run", and the whole step a
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -323,6 +324,113 @@ class WholeStepTests(unittest.TestCase):
         listing = subprocess.run(["git", "worktree", "list"], cwd=self.repo, capture_output=True,
                                  text=True).stdout
         self.assertNotIn("prsentinel_old_", listing)
+
+    def triage_posts(self):
+        return [b for m, p, b, a in self.server.requests if p == "/v1/runs/rid/triage"]
+
+    def test_the_runner_asks_for_an_opinion_on_the_new_finding_only(self):
+        old = os.getcwd()
+        os.chdir(self.repo)
+        try:
+            self.go(self.first, {})
+        finally:
+            os.chdir(old)
+        (post,) = self.triage_posts()
+        self.assertEqual(len(post["items"]), 1)
+        self.assertIn(">> os.system(b, shell=True)", post["items"][0]["snippet"])
+
+    def test_switched_off_means_no_request(self):
+        old = os.getcwd()
+        os.chdir(self.repo)
+        try:
+            self.go(self.first, {}, ai_triage=False)
+        finally:
+            os.chdir(old)
+        self.assertEqual(self.triage_posts(), [])
+
+    def test_a_failing_triage_request_does_not_stop_the_scan_report(self):
+        def boom(*a, **k):
+            raise RuntimeError("model is down")
+        old = os.getcwd()
+        os.chdir(self.repo)
+        try:
+            with mock.patch.object(sc, "triage", boom):
+                body = self.go(self.first, {})
+        finally:
+            os.chdir(old)
+        self.assertEqual(len(body["findings"]), 2)
+        self.assertTrue(any("no AI opinion" in l for l in self.logs))
+
+
+class TriageTests(unittest.TestCase):
+    """The AI opinion (E2): only a few safe lines go out, and any trouble is only a warning."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, True)
+        write(self.root, "app.py", "\n".join("line %d" % n for n in range(1, 31)) + "\n")
+
+    def finding(self, **over):
+        item = {"tool": "bandit", "rule_id": "B602", "severity": "high", "confidence": "high",
+                "file": "app.py", "line": 15, "message": "m", "cwe": None, "origin": "new",
+                "fingerprint": "a" * 64}
+        item.update(over)
+        return item
+
+    def test_the_snippet_is_about_ten_lines_with_the_target_marked(self):
+        text = sc.snippet_for(self.root, "app.py", 15)
+        lines = text.splitlines()
+        self.assertEqual(len(lines), 11)
+        self.assertTrue(lines[5].startswith(">> line 15"))
+        self.assertTrue(lines[0].startswith("   line 10"))
+
+    def test_the_start_and_end_of_a_file_are_handled(self):
+        self.assertEqual(len(sc.snippet_for(self.root, "app.py", 1).splitlines()), 6)
+        self.assertIsNone(sc.snippet_for(self.root, "app.py", 99))
+
+    def test_a_path_that_leaves_the_repository_is_refused(self):
+        outside = os.path.join(os.path.dirname(self.root), "outside_" + os.path.basename(self.root))
+        write(outside, "x.py", "a\n")
+        self.addCleanup(shutil.rmtree, outside, True)
+        rel = os.path.relpath(os.path.join(outside, "x.py"), self.root)
+        self.assertIsNone(sc.snippet_for(self.root, rel, 1))
+
+    def test_lines_that_look_like_secrets_are_never_sent(self):
+        write(self.root, "s.py", "a = 1\npassword = 'hunter2hunter2'\nb = 2\n")
+        self.assertIsNone(sc.snippet_for(self.root, "s.py", 1))
+
+    def test_long_lines_and_snippets_are_capped(self):
+        write(self.root, "long.py", ("x" * 5000 + "\n") * 12)
+        text = sc.snippet_for(self.root, "long.py", 6)
+        self.assertLessEqual(len(text), sc.TRIAGE_SNIPPET_MAX)
+        self.assertTrue(all(len(l) <= sc.TRIAGE_LINE_MAX + 3 for l in text.splitlines()))
+
+    def test_only_new_or_unknown_bandit_findings_are_chosen(self):
+        found = [self.finding(fingerprint="1" * 64),
+                 self.finding(fingerprint="2" * 64, origin="existing"),
+                 self.finding(fingerprint="3" * 64, origin="unknown"),
+                 self.finding(fingerprint="4" * 64, tool="pip-audit"),
+                 self.finding(fingerprint="5" * 64, rule_id="B105"),
+                 self.finding(fingerprint="6" * 64, rule_id="B107")]
+        got = [i["fingerprint"] for i in sc.triage_items(found, self.root)]
+        self.assertEqual(sorted(got), ["1" * 64, "3" * 64])
+
+    def test_a_file_with_a_secret_finding_is_skipped_even_if_the_secret_was_not_sent(self):
+        sent = [self.finding()]
+        secret = self.finding(tool="detect-secrets", rule_id="Secret Keyword", line=2)
+        self.assertEqual(sc.triage_items(sent, self.root, sent + [secret]), [])
+        self.assertEqual(len(sc.triage_items(sent, self.root, sent)), 1)
+
+    def test_at_most_ten_are_sent(self):
+        found = [self.finding(fingerprint="%064x" % n, line=n + 1) for n in range(14)]
+        self.assertEqual(len(sc.triage_items(found, self.root)), sc.TRIAGE_MAX_ITEMS)
+
+    def test_a_server_error_is_only_a_warning(self):
+        from unittest import mock as m
+        logs = []
+        with m.patch.object(sc.client, "request_json", side_effect=sc.client.ApiError(500, "boom")):
+            with self.assertRaises(sc.client.ApiError):
+                sc.triage("http://x", "rid", "t", [self.finding()], self.root, {}, logs.append)
 
 
 class MainWiringTests(RunnerBase):

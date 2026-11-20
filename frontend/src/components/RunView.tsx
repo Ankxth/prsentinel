@@ -158,12 +158,24 @@ function FunctionCard({ fn }: { fn: RunFunctionView }) {
 
 const SEVERITY_ICON: Record<string, string> = { high: "🔴", medium: "🟠", low: "🟡", unknown: "⚪" };
 
+const TRIAGE_LABEL: Record<string, string> = {
+  likely_real: "looks real",
+  likely_false_positive: "looks like a false alarm",
+  unsure: "not sure",
+};
+
 function FindingRow({ f }: { f: FindingView }) {
   const where = f.file ? `${f.file}${f.line ? `:${f.line}` : ""}` : "?";
   return (
     <li>
       {SEVERITY_ICON[f.severity] ?? "⚪"} <code>{f.rule_id}</code> ({f.tool}, {f.severity}
       {f.cwe ? `, ${f.cwe}` : ""}) in <code>{where}</code>: {f.message}
+      {f.triage && TRIAGE_LABEL[f.triage] && (
+        <div className="small muted">
+          🤖 AI: {TRIAGE_LABEL[f.triage]}
+          {f.triage_reason ? ` (${f.triage_reason})` : ""} — a hint only, the finding is never hidden.
+        </div>
+      )}
     </li>
   );
 }

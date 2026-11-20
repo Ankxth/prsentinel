@@ -61,6 +61,19 @@ BANDIT_EXCLUDE = ",".join([
 SECRETS_EXCLUDE = (r"(^|/)(\.git|\.venv|venv|env|node_modules|\.tox|\.prsentinel_tests)/"
                    r"|(^|/)(package-lock\.json|yarn\.lock|poetry\.lock|Pipfile\.lock|uv\.lock)$")
 
+# AI opinion (E2): only a few lines of code around a new Bandit finding are sent, never anything
+# that could hold a secret.
+TRIAGE_MAX_ITEMS = 10
+TRIAGE_CONTEXT_LINES = 5
+TRIAGE_LINE_MAX = 240
+TRIAGE_SNIPPET_MAX = 3500
+TRIAGE_MAX_FILE_BYTES = 1_000_000
+TRIAGE_SKIP_RULES = ("B105", "B106", "B107")  # hard-coded passwords: the code may hold one
+SECRET_LIKE = re.compile(
+    r"AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|gh[pousr]_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}"
+    r"|(?i:pass(word|wd)?|secret|token|api[_-]?key|private[_-]?key|credential)\w*\s*[:=]\s*['\"][^'\"]{4,}",
+)
+
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "unknown": 3}
 ORIGIN_ORDER = {"new": 0, "unknown": 1, "existing": 2}
 REQUIREMENTS_NAME = re.compile(r"^requirements[\w.\-]*\.txt$", re.IGNORECASE)
@@ -424,13 +437,76 @@ def build_body(rows, findings):
     }
 
 
+def snippet_for(root, rel, line):
+    """About ten lines of code around `line` (the target line starts with >>), or None when it is
+    not safe or not possible to send them: a path outside the repository, a missing or huge file,
+    or anything that looks like a secret. Failing closed is the point."""
+    if not rel or not isinstance(line, int) or line < 1:
+        return None
+    base = os.path.realpath(root)
+    path = os.path.realpath(os.path.join(base, rel))
+    if path != base and not path.startswith(base + os.sep):
+        return None
+    try:
+        if os.path.getsize(path) > TRIAGE_MAX_FILE_BYTES:
+            return None
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            lines = handle.read().splitlines()
+    except OSError:
+        return None
+    if line > len(lines):
+        return None
+    first = max(0, line - 1 - TRIAGE_CONTEXT_LINES)
+    chosen = lines[first:line + TRIAGE_CONTEXT_LINES]
+    if any(SECRET_LIKE.search(text) for text in chosen):
+        return None
+    out = []
+    for number, text in enumerate(chosen, first + 1):
+        out.append(("%s %s" % (">>" if number == line else "  ", text[:TRIAGE_LINE_MAX])))
+    return "\n".join(out)[:TRIAGE_SNIPPET_MAX]
+
+
+def triage_items(findings, root, all_findings=None):
+    """Snippets for the new Bandit findings worth an AI opinion, most serious first. `findings` are
+    the ones the server has; `all_findings` (every finding found) decides which files are secret-ish."""
+    # A file where detect-secrets found something is never sent, wherever the finding is.
+    secret_files = {f["file"] for f in (all_findings or findings) if f["tool"] == "detect-secrets"}
+    items = []
+    for f in sorted(findings, key=_sort_key):
+        if len(items) >= TRIAGE_MAX_ITEMS:
+            break
+        if (f["tool"] != "bandit" or f["origin"] not in ("new", "unknown")
+                or f["rule_id"] in TRIAGE_SKIP_RULES or f["file"] in secret_files):
+            continue
+        text = snippet_for(root, f["file"], f["line"])
+        if text:
+            items.append({"fingerprint": f["fingerprint"], "snippet": text})
+    return items
+
+
+def triage(api_url, run_id, token, findings, root, kwargs, log, all_findings=None):
+    """Ask the server for an AI opinion on some new findings. Only a hint: any problem here is
+    logged and changes nothing."""
+    items = triage_items(findings, root, all_findings)
+    if not items:
+        return None
+    reply = client.request_json("POST", "%s/v1/runs/%s/triage" % (api_url, run_id), token=token,
+                                body={"items": items}, **kwargs)
+    judged = len(reply.get("results") or [])
+    log("PRSentinel: AI opinion on %d of %d finding(s)." % (judged, len(items)))
+    if reply.get("reason"):
+        log("PRSentinel: %s" % clip(reply["reason"], 200))
+    return reply
+
+
 def run(api_url, run_id, token, base, root, kwargs, log, annotate, run_cmd=None, tools_python=None,
-        budget=TOTAL_BUDGET_SECONDS):
+        budget=TOTAL_BUDGET_SECONDS, ai_triage=True):
     """Scan, compare with the old code, and report to the server. Returns the body that was sent."""
     run_cmd = run_cmd or default_run_cmd
     started = time.monotonic()
     work = tempfile.mkdtemp(prefix="prsentinel_scan_")
     old_root = None
+    found = []
     try:
         try:
             py = tools_python or install_tools(work, run_cmd)
@@ -446,8 +522,16 @@ def run(api_url, run_id, token, base, root, kwargs, log, annotate, run_cmd=None,
                 old_root = testing_phase._checkout_old(base, root)
             rows, findings = collect(py, root, old_root, base_is_empty, run_cmd, started, budget, log)
             body = build_body(rows, findings)
+            found = findings
         client.request_json("POST", "%s/v1/runs/%s/findings" % (api_url, run_id), token=token,
                             body=body, **kwargs)
+        if ai_triage and body["findings"]:
+            try:
+                triage(api_url, run_id, token, body["findings"], root, kwargs, log, found)
+            except client.ApiError as err:
+                log("PRSentinel: no AI opinion on the findings (%s)." % clip(err.detail, 120))
+            except Exception as err:
+                log("PRSentinel: no AI opinion on the findings (%s)." % clip(str(err), 120))
         return body
     finally:
         testing_phase._remove_old(old_root, root)

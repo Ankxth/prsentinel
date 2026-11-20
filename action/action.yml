@@ -32,6 +32,11 @@ inputs:
     required: false
     default: "true"
 
+  ai-triage:
+    description: Ask the AI for a short opinion (looks real, looks like a false alarm, not sure) on new Bandit findings. It sees about ten lines of code around each finding and never hides one. Needs the AI opt-in on your PRSentinel account.
+    required: false
+    default: "true"
+
 runs:
   using: composite
   steps:
@@ -44,4 +49,5 @@ runs:
         PRSENTINEL_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
         PRSENTINEL_RUN_TESTS: ${{ inputs.run-tests }}
         PRSENTINEL_RUN_SCANNERS: ${{ inputs.run-scanners }}
+        PRSENTINEL_AI_TRIAGE: ${{ inputs.ai-triage }}
       run: python3 "$GITHUB_ACTION_PATH/runner/main.py"

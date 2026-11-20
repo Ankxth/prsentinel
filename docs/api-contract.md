@@ -270,11 +270,29 @@ The verdict is stored in `findings.triage`, `triage_reason` and `triage_model`. 
 ` · 🤖 AI: looks real | looks like a false alarm | not sure (`reason`)` to each listed finding and the note
 "AI opinions are hints. They never hide a finding."
 
+### `POST /v1/runs/{run_id}/findings/{fingerprint}/agent/step` (auth: run token, run must still be `running`)
+
+E3, proof agent for command injection (Bandit B602, B604, B605, new or unknown findings only). One round per call,
+back and forth, at most 5 tries per finding and 3 findings per run (server-enforced). The server never runs a test.
+
+Request: `{"function": {"file", "name", "source" (max 6000), "import_line", "class_name": null},
+"result": null | {"attempt", "lint_ok", "lint_errors": [str], "outcomes": ["canary"|"clean"|"error"|"timeout"] (3),
+"output"}}`. The first call has `result: null`. The function source is resent each call and is not stored.
+
+Response 200: `{"action": "run_test" | "done", "attempt", "test_code", "verdict", "reason"}`. `run_test` carries the
+AI-written test; `done` carries `verdict` = `verified` (3 runs out of 3 recorded the marker reaching a shell
+command) | `needs_review` (mixed) | `not_reproduced` ("could not confirm", never "safe") | `not_attempted`
+(no opt-in, not an eligible finding, allowance used, model trouble before the first try, or the 3-finding limit).
+AI trouble is always 200. 400 unknown attempt, 404 unknown finding, 409 run finished, 422 bad body.
+Stored in `findings.proof_status`, `proof_reason`, `proof_model` and one row per try in `finding_attempts`.
+The PR comment adds ` · 🧪 reproduced by a test run | ❔ could not confirm | ⚠️ mixed results, needs a human`.
+`GET /v1/runs/{id}/findings/{finding_id}/attempts` (owner-only) returns `{finding_id, proof, proof_reason,
+attempts: [{attempt, test_code, lint_ok, lint_errors, outcomes, output, model}]}` (untrusted text).
+
 ### Reserved for other features (not built yet)
 
 | Endpoint | Owner | Purpose |
 |---|---|---|
-| `POST /v1/runs/{run_id}/findings/{fid}/agent/step` | E | proof-agent ping-pong |
 
 All of them authenticate with `Depends(current_run)` (see `backend/app/core/run_token.py`), which
 returns the `Run` row only if the caller holds that run's token. Add each endpoint to this file with
@@ -306,7 +324,7 @@ else); a run token does not open it. The page asks again every few seconds while
 `GET /v1/runs/{id}/findings` (E1, the dashboard run page) returns what the scanners reported, in full:
 `{run_id, status, scanners: [{tool, status, reason, version, compared_with_base, new, existing, unknown}],
 counts: {new, existing, unknown}, omitted, note, findings: [{id, tool, rule_id, severity, confidence, file, line,
-message, cwe, origin, triage, triage_reason}]}` (`triage` and `triage_reason` are `null` when the AI gave no opinion), sorted new first, then by severity, file and line. Everything from the repo is untrusted
+message, cwe, origin, triage, triage_reason, proof, proof_reason}]}` (`triage` and `triage_reason` are `null` when the AI gave no opinion; `proof` is `null` when the proof agent was not asked), sorted new first, then by severity, file and line. Everything from the repo is untrusted
 text. Owner-only (404 for anyone else); a run token does not open it. An older run, or one where the scanners were
 switched off, has `scanners: []`.
 

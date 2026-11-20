@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
+  getFindingAttempts,
   getRunFindings,
+  type ProofAttempts,
   getRunFunctions,
   type FindingsView,
   type FindingView,
@@ -164,7 +166,54 @@ const TRIAGE_LABEL: Record<string, string> = {
   unsure: "not sure",
 };
 
-function FindingRow({ f }: { f: FindingView }) {
+const PROOF_LABEL: Record<string, string> = {
+  verified: "🧪 reproduced by a test run",
+  not_reproduced: "❔ could not confirm (this does not mean it is safe)",
+  needs_review: "⚠️ mixed results, needs a human",
+};
+
+function AgentWork({ runId, findingId }: { runId: string; findingId: string }) {
+  const [data, setData] = useState<ProofAttempts | null>(null);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const toggle = () => {
+    setOpen(!open);
+    if (!data && !error) {
+      getFindingAttempts(runId, findingId)
+        .then(setData)
+        .catch((e) => setError(e instanceof ApiError ? e.message : "Could not load."));
+    }
+  };
+  return (
+    <div className="small">
+      <button type="button" className="link" onClick={toggle}>
+        {open ? "Hide the agent's work" : "Show the agent's work"}
+      </button>
+      {open && error && <p className="error">{error}</p>}
+      {open && data && (
+        <ol>
+          {data.attempts.map((a) => (
+            <li key={a.attempt}>
+              <pre>{a.test_code}</pre>
+              {a.lint_ok === false ? (
+                <p className="muted">Rejected by the checker: {a.lint_errors.join("; ")}</p>
+              ) : a.outcomes.length > 0 ? (
+                <p className="muted">
+                  Three runs: {a.outcomes.join(", ")}
+                  {a.output ? ` — ${a.output}` : ""}
+                </p>
+              ) : (
+                <p className="muted">Not run.</p>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function FindingRow({ f, runId }: { f: FindingView; runId: string }) {
   const where = f.file ? `${f.file}${f.line ? `:${f.line}` : ""}` : "?";
   return (
     <li>
@@ -176,6 +225,13 @@ function FindingRow({ f }: { f: FindingView }) {
           {f.triage_reason ? ` (${f.triage_reason})` : ""} — a hint only, the finding is never hidden.
         </div>
       )}
+      {f.proof && PROOF_LABEL[f.proof] && (
+        <div className="small muted">
+          {PROOF_LABEL[f.proof]}
+          {f.proof_reason ? ` (${f.proof_reason})` : ""} — evidence, not a full proof.
+        </div>
+      )}
+      {f.proof && f.proof !== "not_attempted" && <AgentWork runId={runId} findingId={f.id} />}
     </li>
   );
 }
@@ -224,7 +280,7 @@ function FindingsSection({ data }: { data: FindingsView }) {
           {fresh.length > 0 && (
             <ul className="tests">
               {fresh.map((f) => (
-                <FindingRow key={f.id} f={f} />
+                <FindingRow key={f.id} f={f} runId={data.run_id} />
               ))}
             </ul>
           )}
@@ -233,7 +289,7 @@ function FindingsSection({ data }: { data: FindingsView }) {
               <summary className="small">{old.length} finding(s) that already existed before this commit</summary>
               <ul className="tests">
                 {old.map((f) => (
-                  <FindingRow key={f.id} f={f} />
+                  <FindingRow key={f.id} f={f} runId={data.run_id} />
                 ))}
               </ul>
             </details>

@@ -110,7 +110,7 @@ def parse_junit(xml_path, stem):
     return {"tests": tests, "messages": messages, "file_error": ""}
 
 
-def run_file(root, test_path, timeout=DEFAULT_TIMEOUT, run_index=None, python=None):
+def run_file(root, test_path, timeout=DEFAULT_TIMEOUT, run_index=None, python=None, extra_env=None):
     """Run one test file with `root` as the project folder.
 
     Returns {"status": OK | TIMEOUT | ERROR, "tests": {name: result}, "messages": {name: text},
@@ -121,7 +121,9 @@ def run_file(root, test_path, timeout=DEFAULT_TIMEOUT, run_index=None, python=No
                "-o", "addopts=", "--rootdir", root, "--junitxml", report, test_path]
     empty = {"tests": {}, "messages": {}}
     try:
-        done = subprocess.run(command, cwd=root, env=child_env(root=root, run_index=run_index),
+        env = child_env(root=root, run_index=run_index)
+        env.update(extra_env or {})
+        done = subprocess.run(command, cwd=root, env=env,
                               capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return {**empty, "status": TIMEOUT, "error": "took longer than %ss and was stopped" % timeout}

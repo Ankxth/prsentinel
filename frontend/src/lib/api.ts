@@ -185,6 +185,10 @@ export type FindingView = {
   triage: "likely_real" | "likely_false_positive" | "unsure" | string | null;
   /** Model text: untrusted, show as plain text. */
   triage_reason: string | null;
+  /** Proof agent: verified | not_reproduced | needs_review | not_attempted | null. */
+  proof: "verified" | "not_reproduced" | "needs_review" | "not_attempted" | string | null;
+  /** Server text: show as plain text. */
+  proof_reason: string | null;
 };
 
 export type FindingsView = {
@@ -196,6 +200,27 @@ export type FindingsView = {
   note: string;
   findings: FindingView[];
 };
+
+export type ProofAttempt = {
+  attempt: number;
+  /** AI-written test text: untrusted, show as plain text, never run in the browser. */
+  test_code: string;
+  lint_ok: boolean | null;
+  lint_errors: string[];
+  outcomes: string[];
+  output: string | null;
+  model: string | null;
+};
+
+export type ProofAttempts = {
+  finding_id: string;
+  proof: string | null;
+  proof_reason: string | null;
+  attempts: ProofAttempt[];
+};
+
+export const getFindingAttempts = (runId: string, findingId: string) =>
+  apiFetch<ProofAttempts>(`/v1/runs/${runId}/findings/${findingId}/attempts`);
 
 export const getRunFindings = (runId: string) => apiFetch<FindingsView>(`/v1/runs/${runId}/findings`);
 

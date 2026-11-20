@@ -9,7 +9,18 @@ value is never sent at all. Rows cascade from `runs`, so deleting a repo or an a
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, Uuid, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -49,6 +60,44 @@ class Finding(Base):
     triage: Mapped[str | None] = mapped_column(String(24))
     triage_reason: Mapped[str | None] = mapped_column(String(300))
     triage_model: Mapped[str | None] = mapped_column(String(80))
+
+    # Proof agent (E3). proof_status is "verified" | "not_reproduced" | "needs_review" |
+    # "not_attempted", or None when the agent was never asked. "not_reproduced" means "could not
+    # confirm", never "safe".
+    proof_status: Mapped[str | None] = mapped_column(String(20))
+    proof_reason: Mapped[str | None] = mapped_column(String(300))
+    proof_model: Mapped[str | None] = mapped_column(String(80))
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class FindingAttempt(Base):
+    """One try of the proof agent: the test it wrote and what happened when the runner ran it.
+
+    The test is AI-written text (never run on the server). The failure output is cut short and is
+    untrusted. Rows cascade from `findings`, so they go with the run, the repo and the account.
+    """
+
+    __tablename__ = "finding_attempts"
+    __table_args__ = (
+        UniqueConstraint("finding_id", "attempt", name="uq_finding_attempts_finding_id_attempt"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    finding_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("findings.id", ondelete="CASCADE"), index=True
+    )
+    attempt: Mapped[int] = mapped_column(Integer)
+    test_code: Mapped[str] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(String(80))
+
+    # Filled in when the runner reports back; all None while the test has not been run yet.
+    lint_ok: Mapped[bool | None] = mapped_column(Boolean)
+    lint_errors: Mapped[list | None] = mapped_column(JSON)
+    outcomes: Mapped[list | None] = mapped_column(JSON)
+    output: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

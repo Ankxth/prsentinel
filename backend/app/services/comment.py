@@ -14,6 +14,8 @@ from app.db.models.run_functions import FunctionTestResult, RunFunction
 from app.db.models.runs import Run
 from app.services import classifier as c
 from app.services.findings import SCANNER_NOTE, count_origins, load_findings, scanner_rows
+from app.services.proof import PROOF_NOTE
+from app.services.proof import LABELS as PROOF_LABELS
 from app.services.triage import TRIAGE_NOTE
 from app.services.triage import label as triage_label
 
@@ -231,6 +233,15 @@ def _triage_text(f) -> str:
     return f" · 🤖 AI: {text}{reason}"
 
 
+def _proof_text(f) -> str:
+    """What the proof agent found out about a finding (E3). 'Not tried' is not shown."""
+    if f.proof_status not in ("verified", "not_reproduced", "needs_review"):
+        return ""
+    icon = {"verified": "🧪", "not_reproduced": "❔", "needs_review": "⚠️"}[f.proof_status]
+    reason = f" ({_code(f.proof_reason, 200)})" if f.proof_reason else ""
+    return f" · {icon} {PROOF_LABELS[f.proof_status]}{reason}"
+
+
 def _security_section(run: Run, db: Session) -> list[str]:
     """Scanner results (feature E1). Only findings that are new (or could not be compared with the
     old code) are listed; findings that already existed are only counted. A scanner that could
@@ -286,6 +297,7 @@ def _security_section(run: Run, db: Session) -> list[str]:
             f"- {icon} {_code(f.rule_id, 60)} ({_code(f.tool, 20)}, {f.severity}) in "
             f"{_code(where, 150)}: {_code(f.message, 200)}"
             + _triage_text(f)
+            + _proof_text(f)
         )
     if len(listed) > MAX_FINDINGS_SHOWN:
         lines.append(f"- … and {len(listed) - MAX_FINDINGS_SHOWN} more (see the dashboard)")
@@ -293,6 +305,8 @@ def _security_section(run: Run, db: Session) -> list[str]:
         lines.append("")
     if any(f.triage for f in listed[:MAX_FINDINGS_SHOWN]):
         lines += [f"<sub>{TRIAGE_NOTE}</sub>", ""]
+    if any(f.proof_status in ("verified", "not_reproduced", "needs_review") for f in listed[:MAX_FINDINGS_SHOWN]):
+        lines += [f"<sub>{PROOF_NOTE}</sub>", ""]
     lines += [f"<sub>{SCANNER_NOTE}</sub>", ""]
     return lines
 

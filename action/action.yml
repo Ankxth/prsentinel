@@ -37,6 +37,11 @@ inputs:
     required: false
     default: "true"
 
+  ai-proof:
+    description: For new command-injection findings from Bandit, let the AI write a small test and run it in your own runner to see whether the problem can be reproduced. The AI sees only the one function. Needs the AI opt-in and pytest installed in an earlier step. "Could not confirm" never means safe.
+    required: false
+    default: "true"
+
 runs:
   using: composite
   steps:
@@ -50,4 +55,5 @@ runs:
         PRSENTINEL_RUN_TESTS: ${{ inputs.run-tests }}
         PRSENTINEL_RUN_SCANNERS: ${{ inputs.run-scanners }}
         PRSENTINEL_AI_TRIAGE: ${{ inputs.ai-triage }}
+        PRSENTINEL_AI_PROOF: ${{ inputs.ai-proof }}
       run: python3 "$GITHUB_ACTION_PATH/runner/main.py"

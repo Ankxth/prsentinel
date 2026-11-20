@@ -502,7 +502,7 @@ def triage(api_url, run_id, token, findings, root, kwargs, log, all_findings=Non
 
 
 def run(api_url, run_id, token, base, root, kwargs, log, annotate, run_cmd=None, tools_python=None,
-        budget=TOTAL_BUDGET_SECONDS, ai_triage=True):
+        budget=TOTAL_BUDGET_SECONDS, ai_triage=True, ai_proof=True):
     """Scan, compare with the old code, and report to the server. Returns the body that was sent."""
     run_cmd = run_cmd or default_run_cmd
     started = time.monotonic()
@@ -534,6 +534,12 @@ def run(api_url, run_id, token, base, root, kwargs, log, annotate, run_cmd=None,
                 log("PRSentinel: no AI opinion on the findings (%s)." % clip(err.detail, 120))
             except Exception as err:
                 log("PRSentinel: no AI opinion on the findings (%s)." % clip(str(err), 120))
+        if ai_proof and body["findings"]:
+            try:
+                import proof_phase
+                proof_phase.run(api_url, run_id, token, body["findings"], root, kwargs, log, found)
+            except Exception as err:
+                log("PRSentinel: no proof tests were tried (%s)." % clip(str(err), 120))
         return body
     finally:
         testing_phase._remove_old(old_root, root)

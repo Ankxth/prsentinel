@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api import (
+    agent,
     context,
     findings,
     generate,
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(run_view.router)
     app.include_router(findings.router)
     app.include_router(triage.router)
+    app.include_router(agent.router)
     return app
 
 

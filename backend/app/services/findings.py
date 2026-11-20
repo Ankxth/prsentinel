@@ -87,6 +87,8 @@ def build_findings_view(run: Run, db: Session) -> dict:
                 "origin": f.origin,
                 "triage": f.triage,
                 "triage_reason": f.triage_reason,
+                "proof": f.proof_status,
+                "proof_reason": f.proof_reason,
             }
             for f in rows
         ],

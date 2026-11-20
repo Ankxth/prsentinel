@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import current_user
 from app.core.run_token import current_run
 from app.db.models.accounts import Repo, User
-from app.db.models.findings import Finding
+from app.db.models.findings import Finding, FindingAttempt
 from app.db.models.runs import Run
 from app.db.session import get_db
 from app.services.findings import build_findings_view, clean, clean_path
@@ -148,3 +148,44 @@ def get_findings(
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Run not found.")
     return build_findings_view(run, db)
+
+
+@router.get("/v1/runs/{run_id}/findings/{finding_id}/attempts")
+def get_finding_attempts(
+    run_id: UUID,
+    finding_id: UUID,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """The proof agent's tries for one finding (E3): the AI-written test and what happened when
+    the runner ran it. All of it is untrusted text; the test is shown, never run, on the server."""
+    finding = db.scalar(
+        select(Finding)
+        .join(Run, Run.id == Finding.run_id)
+        .join(Repo, Repo.id == Run.repo_id)
+        .where(Finding.id == finding_id, Run.id == run_id, Repo.owner_user_id == user.id)
+    )
+    if finding is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Finding not found.")
+    rows = db.scalars(
+        select(FindingAttempt)
+        .where(FindingAttempt.finding_id == finding.id)
+        .order_by(FindingAttempt.attempt)
+    )
+    return {
+        "finding_id": str(finding.id),
+        "proof": finding.proof_status,
+        "proof_reason": finding.proof_reason,
+        "attempts": [
+            {
+                "attempt": a.attempt,
+                "test_code": a.test_code,
+                "lint_ok": a.lint_ok,
+                "lint_errors": a.lint_errors or [],
+                "outcomes": a.outcomes or [],
+                "output": a.output,
+                "model": a.model,
+            }
+            for a in rows
+        ],
+    }

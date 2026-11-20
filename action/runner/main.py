@@ -149,7 +149,8 @@ def run(env):
         if (env.get("PRSENTINEL_RUN_SCANNERS") or "true").lower() == "true":
             try:
                 sent = scanners.run(api_url, run_id, run_token, base, os.getcwd(), kwargs, log,
-                                    annotate)
+                                    annotate,
+                                    ai_triage=(env.get("PRSENTINEL_AI_TRIAGE") or "true").lower() == "true")
                 ran = [r["tool"] for r in sent["scanners"] if r["status"] == "ran"]
                 log("PRSentinel: scanners ran: %s; %d finding(s) reported."
                     % (", ".join(ran) or "none", len(sent["findings"])))

@@ -250,6 +250,26 @@ The server also writes the scanner rows (with counts per origin) to `runs.summar
 not run, the number of new findings, only the new (or unknown) findings listed (10 at most), existing ones only
 counted, and the sentence that scanners find only some problems.
 
+### `POST /v1/runs/{run_id}/triage` (auth: run token, run must still be `running`)
+
+E2: asks the AI for a short opinion on new Bandit findings. A hint only: it never hides or removes a finding.
+Needs the owner's `llm_opt_in` and counts against the same daily allowance as test generation.
+
+Request: `{"items": [{"fingerprint": "<64 hex>", "snippet": "<1 to 4000 characters>"}]}`, at most 10 items. The
+snippet is about 10 lines of code around the finding (the target line starts with `>>`). The runner never sends a
+file where detect-secrets found something, a line that looks like a secret, or rules B105, B106 and B107. The
+server treats the snippet as untrusted data, uses it only for this call, and does not store it.
+
+Response 200: `{"status": "triaged" | "not_triaged", "reason": "" | "...", "results": [{"fingerprint",
+"verdict": "likely_real" | "likely_false_positive" | "unsure", "reason": "<=200 chars"}], "skipped": 0}`.
+Problems on the AI side (no opt-in, allowance used up, model error) give 200 with `not_triaged` and a plain
+`reason`; after a model or allowance error the server stops (it does not retry item by item). Only Bandit findings
+with origin `new` or `unknown` are judged; others are counted in `skipped`. Errors: 401 no or wrong run token, 409
+the run has finished, 422 bad body. Posting `/findings` again replaces the rows, so earlier triage is cleared.
+The verdict is stored in `findings.triage`, `triage_reason` and `triage_model`. The PR comment adds
+` · 🤖 AI: looks real | looks like a false alarm | not sure (`reason`)` to each listed finding and the note
+"AI opinions are hints. They never hide a finding."
+
 ### Reserved for other features (not built yet)
 
 | Endpoint | Owner | Purpose |
@@ -286,7 +306,7 @@ else); a run token does not open it. The page asks again every few seconds while
 `GET /v1/runs/{id}/findings` (E1, the dashboard run page) returns what the scanners reported, in full:
 `{run_id, status, scanners: [{tool, status, reason, version, compared_with_base, new, existing, unknown}],
 counts: {new, existing, unknown}, omitted, note, findings: [{id, tool, rule_id, severity, confidence, file, line,
-message, cwe, origin}]}`, sorted new first, then by severity, file and line. Everything from the repo is untrusted
+message, cwe, origin, triage, triage_reason}]}` (`triage` and `triage_reason` are `null` when the AI gave no opinion), sorted new first, then by severity, file and line. Everything from the repo is untrusted
 text. Owner-only (404 for anyone else); a run token does not open it. An older run, or one where the scanners were
 switched off, has `scanners: []`.
 

@@ -148,6 +148,11 @@ class FakeServer:
                 if path == "/v1/runs/rid/findings":
                     return self._send(200, {"saved": len(body["findings"]), "new": 0,
                                             "existing": 0, "unknown": 0})
+                if path == "/v1/runs/rid/triage":
+                    return self._send(200, {"status": "triaged", "reason": "", "skipped": 0,
+                                            "results": [{"fingerprint": i["fingerprint"],
+                                                         "verdict": "unsure", "reason": "test"}
+                                                        for i in body["items"]]})
                 if path == "/v1/runs/rid/mutation":
                     return self._send(200, {"function_id": "fid", "status": body["status"],
                                             "score": None})

@@ -181,6 +181,10 @@ export type FindingView = {
   cwe: string | null;
   /** new (introduced by this commit) | existing | unknown (could not be compared) */
   origin: "new" | "existing" | "unknown" | string;
+  /** AI opinion: a hint only, never hides a finding. null when none was given. */
+  triage: "likely_real" | "likely_false_positive" | "unsure" | string | null;
+  /** Model text: untrusted, show as plain text. */
+  triage_reason: string | null;
 };
 
 export type FindingsView = {

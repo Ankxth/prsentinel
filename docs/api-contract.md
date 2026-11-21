@@ -285,8 +285,8 @@ command) | `needs_review` (mixed) | `not_reproduced` ("could not confirm", never
 (no opt-in, not an eligible finding, allowance used, model trouble before the first try, or the 3-finding limit).
 AI trouble is always 200. 400 unknown attempt, 404 unknown finding, 409 run finished, 422 bad body.
 Stored in `findings.proof_status`, `proof_reason`, `proof_model` and one row per try in `finding_attempts`.
-The PR comment adds ` · 🧪 reproduced by a test run | ❔ could not confirm | ⚠️ mixed results, needs a human`.
-`GET /v1/runs/{id}/findings/{finding_id}/attempts` (owner-only) returns `{finding_id, proof, proof_reason,
+The PR comment adds ` · 🧪 reproduced by a test run | ❔ could not confirm | ⚠️ mixed results, needs a human`, and for `verified` or `needs_review` two indented lines: `🤖 AI explanation: ...` (only when the AI wrote one) and a fixed `Next step: ...`. After a `verified` result the server makes one more AI call (purpose `vuln_explain`, two plain sentences, stored in `findings.proof_explanation`, migration `0011`); any trouble means no explanation and never changes the verdict.
+`GET /v1/runs/{id}/findings/{finding_id}/attempts` (owner-only) returns `{finding_id, proof, proof_reason, proof_explanation, how_to_read,
 attempts: [{attempt, test_code, lint_ok, lint_errors, outcomes, output, model}]}` (untrusted text).
 
 ### Reserved for other features (not built yet)
@@ -324,7 +324,7 @@ else); a run token does not open it. The page asks again every few seconds while
 `GET /v1/runs/{id}/findings` (E1, the dashboard run page) returns what the scanners reported, in full:
 `{run_id, status, scanners: [{tool, status, reason, version, compared_with_base, new, existing, unknown}],
 counts: {new, existing, unknown}, omitted, note, findings: [{id, tool, rule_id, severity, confidence, file, line,
-message, cwe, origin, triage, triage_reason, proof, proof_reason}]}` (`triage` and `triage_reason` are `null` when the AI gave no opinion; `proof` is `null` when the proof agent was not asked), sorted new first, then by severity, file and line. Everything from the repo is untrusted
+message, cwe, origin, triage, triage_reason, proof, proof_reason, proof_explanation, proof_next_step}]}` (`triage` and `triage_reason` are `null` when the AI gave no opinion; `proof` is `null` when the proof agent was not asked), sorted new first, then by severity, file and line. Everything from the repo is untrusted
 text. Owner-only (404 for anyone else); a run token does not open it. An older run, or one where the scanners were
 switched off, has `scanners: []`.
 

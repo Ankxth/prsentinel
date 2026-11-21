@@ -172,6 +172,13 @@ const PROOF_LABEL: Record<string, string> = {
   needs_review: "⚠️ mixed results, needs a human",
 };
 
+const OUTCOME_TEXT: Record<string, string> = {
+  canary: "marker reached the shell",
+  clean: "did not reach it",
+  error: "test failed to run",
+  timeout: "timed out",
+};
+
 function AgentWork({ runId, findingId }: { runId: string; findingId: string }) {
   const [data, setData] = useState<ProofAttempts | null>(null);
   const [open, setOpen] = useState(false);
@@ -190,6 +197,7 @@ function AgentWork({ runId, findingId }: { runId: string; findingId: string }) {
         {open ? "Hide the agent's work" : "Show the agent's work"}
       </button>
       {open && error && <p className="error">{error}</p>}
+      {open && data && <p className="muted">How to read this: {data.how_to_read}</p>}
       {open && data && (
         <ol>
           {data.attempts.map((a) => (
@@ -199,7 +207,7 @@ function AgentWork({ runId, findingId }: { runId: string; findingId: string }) {
                 <p className="muted">Rejected by the checker: {a.lint_errors.join("; ")}</p>
               ) : a.outcomes.length > 0 ? (
                 <p className="muted">
-                  Three runs: {a.outcomes.join(", ")}
+                  Three runs: {a.outcomes.map((o) => OUTCOME_TEXT[o] ?? o).join(", ")}
                   {a.output ? ` — ${a.output}` : ""}
                 </p>
               ) : (
@@ -231,6 +239,10 @@ function FindingRow({ f, runId }: { f: FindingView; runId: string }) {
           {f.proof_reason ? ` (${f.proof_reason})` : ""} — evidence, not a full proof.
         </div>
       )}
+      {f.proof_explanation && (
+        <div className="small muted">🤖 AI explanation: {f.proof_explanation}</div>
+      )}
+      {f.proof_next_step && <div className="small muted">Next step: {f.proof_next_step}</div>}
       {f.proof && f.proof !== "not_attempted" && <AgentWork runId={runId} findingId={f.id} />}
     </li>
   );

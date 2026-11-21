@@ -67,6 +67,8 @@ class Finding(Base):
     proof_status: Mapped[str | None] = mapped_column(String(20))
     proof_reason: Mapped[str | None] = mapped_column(String(300))
     proof_model: Mapped[str | None] = mapped_column(String(80))
+    # Optional plain-words explanation written by the AI after a verified result (label: AI).
+    proof_explanation: Mapped[str | None] = mapped_column(String(500))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

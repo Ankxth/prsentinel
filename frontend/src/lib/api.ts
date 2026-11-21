@@ -189,6 +189,10 @@ export type FindingView = {
   proof: "verified" | "not_reproduced" | "needs_review" | "not_attempted" | string | null;
   /** Server text: show as plain text. */
   proof_reason: string | null;
+  /** AI text after a verified result: untrusted, plain text. */
+  proof_explanation: string | null;
+  /** Fixed advice from the server, shown when a proof was verified or mixed. */
+  proof_next_step: string | null;
 };
 
 export type FindingsView = {
@@ -216,6 +220,8 @@ export type ProofAttempts = {
   finding_id: string;
   proof: string | null;
   proof_reason: string | null;
+  proof_explanation: string | null;
+  how_to_read: string;
   attempts: ProofAttempt[];
 };
 

@@ -64,6 +64,8 @@ def count_origins(rows: list[Finding]) -> dict[str, int]:
 
 
 def build_findings_view(run: Run, db: Session) -> dict:
+    from app.services.proof import NEXT_STEP  # here, not at the top: proof.py imports this module
+
     rows = load_findings(db, run.id)
     summary = run.summary or {}
     return {
@@ -89,6 +91,8 @@ def build_findings_view(run: Run, db: Session) -> dict:
                 "triage_reason": f.triage_reason,
                 "proof": f.proof_status,
                 "proof_reason": f.proof_reason,
+                "proof_explanation": f.proof_explanation,
+                "proof_next_step": NEXT_STEP if f.proof_status in ("verified", "needs_review") else None,
             }
             for f in rows
         ],

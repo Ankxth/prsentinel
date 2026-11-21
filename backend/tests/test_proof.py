@@ -103,9 +103,9 @@ def test_three_canary_runs_verify_the_finding(client, run, db, fake):
     assert out["action"] == "done" and out["verdict"] == "verified"
     saved = row(db, f)
     assert (saved.proof_status, saved.origin, saved.severity) == ("verified", "new", "high")
-    assert len(fake.calls) == 1
+    assert len(fake.calls) == 2   # the test, then the optional explanation
     # asking again does not call the model again
-    assert step(client, run, f).json()["verdict"] == "verified" and len(fake.calls) == 1
+    assert step(client, run, f).json()["verdict"] == "verified" and len(fake.calls) == 2
 
 
 def test_mixed_runs_need_a_human(client, run, db, fake):
@@ -284,3 +284,58 @@ def test_only_the_owner_can_read_the_attempts(client, run, db, fake):
     step(client, run, f)
     fid = db.query(Finding).one().id
     assert client.get(f"/v1/runs/{run.id}/findings/{fid}/attempts").status_code in (401, 403)
+
+
+# ------------------------------------------------------------------ explanations (E3d)
+
+EXPLAIN = "The cmd argument is joined into a shell command. An attacker can add their own commands after a semicolon."
+
+
+def test_a_verified_finding_gets_an_ai_explanation_and_a_next_step(client, run, db, fake, make_token):
+    from tests.test_run_view import owner_headers
+
+    f = finding()
+    send(client, run, [f])
+    step(client, run, f)
+    fake.reply = EXPLAIN
+    out = step(client, run, f, report(1, ["canary"] * 3)).json()
+    assert out["verdict"] == "verified" and "run_command() " in out["reason"]
+    assert "3 of 3 runs" in out["reason"]
+    system, user = fake.calls[1]["messages"]
+    assert fake.calls[1]["purpose"] == "vuln_explain" and "DATA" in system["content"]
+    assert "run_command" in user["content"] and "CANARY" in user["content"]
+    assert row(db, f).proof_explanation == EXPLAIN
+    assert {u.purpose for u in db.query(LLMUsage).all()} == {"vuln_agent", "vuln_explain"}
+
+    comment = finish(client, run)
+    assert "AI explanation" in comment and "Next step" in comment and "shlex.quote" in comment
+
+    headers = owner_headers(db, make_token)
+    shown = client.get(f"/v1/runs/{run.id}/findings", headers=headers).json()["findings"][0]
+    assert shown["proof_explanation"] == EXPLAIN and "shlex.quote" in shown["proof_next_step"]
+    attempts = client.get(f"/v1/runs/{run.id}/findings/{shown['id']}/attempts", headers=headers).json()
+    assert attempts["proof_explanation"] == EXPLAIN and "harmless random string" in attempts["how_to_read"]
+
+
+@pytest.mark.parametrize("trouble", ["error", "unusable"])
+def test_explanation_trouble_never_changes_the_verdict(client, run, db, fake, trouble):
+    f = finding()
+    send(client, run, [f])
+    step(client, run, f)
+    if trouble == "error":
+        fake.error = LLMError("unavailable", "x")
+    else:
+        fake.reply = "ok"
+    out = step(client, run, f, report(1, ["canary"] * 3)).json()
+    assert out["verdict"] == "verified"
+    assert row(db, f).proof_explanation is None
+
+
+def test_no_explanation_for_other_verdicts_and_none_shown_in_the_comment(client, run, db, fake):
+    f = finding()
+    send(client, run, [f])
+    step(client, run, f)
+    out = step(client, run, f, report(1, ["canary", "clean", "clean"])).json()
+    assert out["verdict"] == "needs_review" and len(fake.calls) == 1
+    comment = finish(client, run)
+    assert "AI explanation" not in comment and "Next step" in comment

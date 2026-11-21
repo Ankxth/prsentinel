@@ -14,7 +14,7 @@ from app.db.models.run_functions import FunctionTestResult, RunFunction
 from app.db.models.runs import Run
 from app.services import classifier as c
 from app.services.findings import SCANNER_NOTE, count_origins, load_findings, scanner_rows
-from app.services.proof import PROOF_NOTE
+from app.services.proof import NEXT_STEP, PROOF_NOTE
 from app.services.proof import LABELS as PROOF_LABELS
 from app.services.triage import TRIAGE_NOTE
 from app.services.triage import label as triage_label
@@ -242,6 +242,17 @@ def _proof_text(f) -> str:
     return f" · {icon} {PROOF_LABELS[f.proof_status]}{reason}"
 
 
+def _proof_detail(f) -> list[str]:
+    """Indented lines under a finding: the AI's plain explanation and a next step (E3d)."""
+    if f.proof_status not in ("verified", "needs_review"):
+        return []
+    lines = []
+    if f.proof_explanation:
+        lines.append(f"  - 🤖 AI explanation: {_code(f.proof_explanation, 500)}")
+    lines.append(f"  - Next step: {_code(NEXT_STEP, 300)}")
+    return lines
+
+
 def _security_section(run: Run, db: Session) -> list[str]:
     """Scanner results (feature E1). Only findings that are new (or could not be compared with the
     old code) are listed; findings that already existed are only counted. A scanner that could
@@ -299,6 +310,7 @@ def _security_section(run: Run, db: Session) -> list[str]:
             + _triage_text(f)
             + _proof_text(f)
         )
+        lines += _proof_detail(f)
     if len(listed) > MAX_FINDINGS_SHOWN:
         lines.append(f"- … and {len(listed) - MAX_FINDINGS_SHOWN} more (see the dashboard)")
     if listed:

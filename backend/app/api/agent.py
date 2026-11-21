@@ -78,6 +78,26 @@ def _done(finding: Finding, status_: str, reason: str, model: str | None = None)
     return StepOut(action="done", verdict=status_, reason=finding.proof_reason)
 
 
+def _explain(db, repo, settings, complete, finding, function, test_code) -> None:
+    """Optional two-sentence explanation after a verified result. Any trouble means no explanation;
+    it never changes the verdict."""
+    try:
+        check_allowance(db, repo, settings)
+        result = complete(
+            proof.EXPLAIN_PURPOSE,
+            proof.build_explain_messages(finding, function.model_dump(), test_code),
+            budget_key="default",
+            max_tokens=proof.EXPLAIN_MAX_TOKENS,
+        )
+    except (AllowanceUsed, LLMError):
+        return
+    record(db, repo, proof.EXPLAIN_PURPOSE, result)
+    try:
+        finding.proof_explanation = proof.parse_explanation(result.text)
+    except ValueError:
+        return
+
+
 @router.post(
     "/v1/runs/{run_id}/findings/{fingerprint}/agent/step", response_model=StepOut
 )
@@ -130,9 +150,13 @@ def agent_step(
         last.lint_errors = [clean(e, 200) for e in body.result.lint_errors]
         last.outcomes = list(body.result.outcomes)
         last.output = clean(body.result.output, proof.MAX_OUTPUT_CHARS) if body.result.output else None
-        verdict, reason = proof.judge(body.result.lint_ok, list(body.result.outcomes))
+        verdict, reason = proof.judge(
+            body.result.lint_ok, list(body.result.outcomes), body.function.name
+        )
         if verdict:
             out = _done(finding, verdict, reason, last.model)
+            if verdict == "verified":
+                _explain(db, repo, settings, complete, finding, body.function, last.test_code)
             db.commit()
             return out
         if len(attempts) >= proof.MAX_ATTEMPTS:

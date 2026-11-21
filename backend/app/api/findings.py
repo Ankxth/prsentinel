@@ -25,6 +25,7 @@ from app.db.models.accounts import Repo, User
 from app.db.models.findings import Finding, FindingAttempt
 from app.db.models.runs import Run
 from app.db.session import get_db
+from app.services.proof import HOW_TO_READ
 from app.services.findings import build_findings_view, clean, clean_path
 
 router = APIRouter(tags=["findings"])
@@ -176,6 +177,8 @@ def get_finding_attempts(
         "finding_id": str(finding.id),
         "proof": finding.proof_status,
         "proof_reason": finding.proof_reason,
+        "proof_explanation": finding.proof_explanation,
+        "how_to_read": HOW_TO_READ,
         "attempts": [
             {
                 "attempt": a.attempt,

@@ -1,0 +1,26 @@
+# Hosts the dashboard (frontend only) as a free Render static site.
+# The backend already runs as its own Render web service and is not managed here.
+services:
+  - type: web
+    name: prsentinel-dashboard
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: VITE_API_URL
+        value: https://prsentinel-21ho.onrender.com
+      - key: VITE_SUPABASE_URL
+        sync: false   # paste your Supabase project URL in the Render dashboard
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false   # paste the publishable (anon) key; never the secret key
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

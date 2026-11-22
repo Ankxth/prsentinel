@@ -25,6 +25,21 @@ export function closeRunPage(): void {
   window.location.hash = "";
 }
 
+export function openHomePage(): void {
+  window.location.hash = "#/home";
+}
+
+/** True when the address is the home (about) page. */
+export function useIsHomeHash(): boolean {
+  const [home, setHome] = useState(() => window.location.hash === "#/home");
+  useEffect(() => {
+    const update = () => setHome(window.location.hash === "#/home");
+    window.addEventListener("hashchange", update);
+    return () => window.removeEventListener("hashchange", update);
+  }, []);
+  return home;
+}
+
 /** The run id in the current address, kept up to date when the address changes. */
 export function useRunIdFromHash(): string | null {
   const [runId, setRunId] = useState<string | null>(() => runIdFromHash(window.location.hash));

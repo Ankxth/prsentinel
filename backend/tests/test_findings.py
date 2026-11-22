@@ -201,7 +201,7 @@ def test_findings_that_could_not_be_compared_are_not_called_new(client, run):
 def test_only_ten_findings_are_listed(client, run):
     send(client, run, [finding(rule=f"B{i}", line=i, key=str(i)) for i in range(14)])
     comment = finish(client, run)
-    assert comment.count("- 🔴") == 10
+    assert comment.count("- **High**") == 10
     assert "… and 4 more (see the dashboard)" in comment
 
 
@@ -211,7 +211,7 @@ def test_hostile_scanner_text_cannot_break_the_comment(client, run):
     nasty = "`](http://evil) <img src=x onerror=alert(1)>\n# heading"
     send(client, run, [finding(message=nasty, rule=nasty, file=nasty)])
     comment = finish(client, run)
-    line = next(x for x in comment.splitlines() if x.startswith("- 🔴"))
+    line = next(x for x in comment.splitlines() if x.startswith("- **High**"))
     outside_code = re.sub(r"`[^`]*`", "", line)
     assert "<img" not in outside_code and "](" not in outside_code
     assert not any(x.startswith("# heading") for x in comment.splitlines())

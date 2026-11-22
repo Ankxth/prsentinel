@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { deleteAccount } from "../lib/api";
+import { clearCache } from "../lib/cache";
 import { supabase } from "../lib/supabase";
 
 export default function AccountSection({ login }: { login: string }) {
@@ -19,6 +20,7 @@ export default function AccountSection({ login }: { login: string }) {
     setError(null);
     try {
       await deleteAccount();
+      clearCache();
       await supabase!.auth.signOut();
     } catch (e) {
       setError((e as Error).message);
@@ -27,9 +29,10 @@ export default function AccountSection({ login }: { login: string }) {
   }
 
   return (
-    <section className="card">
-      <h2>Delete my account</h2>
-      <p className="muted small">
+    <details className="card">
+      <summary className="small muted" style={{ cursor: "pointer" }}>Account settings</summary>
+      <h2 style={{ marginTop: 12 }}>Delete my account</h2>
+      <p className="muted small" style={{ margin: "6px 0 12px" }}>
         Removes your account, your repositories and all stored results. This cannot be undone.
         You can sign in again later to start fresh.
       </p>
@@ -37,6 +40,6 @@ export default function AccountSection({ login }: { login: string }) {
         {busy ? "Deleting…" : "Delete my account and data"}
       </button>
       {error && <p className="error">{error}</p>}
-    </section>
+    </details>
   );
 }

@@ -209,9 +209,9 @@ def test_the_comment_shows_the_opinion_next_to_the_finding(client, run, db, fake
     send(client, run, [judged, plain])
     ask(client, run, [item(judged)])
     comment = finish(client, run)
-    assert "🤖 AI: looks real" in comment
+    assert "AI opinion: looks real" in comment
     assert "`cmd comes from the caller, so it can inject commands.`" in comment
-    assert comment.count("🤖 AI:") == 1          # the other finding has no opinion
+    assert comment.count("AI opinion:") == 1          # the other finding has no opinion
     assert triage.TRIAGE_NOTE in comment
     assert "B404" in comment and "B602" in comment   # nothing is hidden
 
@@ -229,7 +229,7 @@ def test_a_false_alarm_opinion_still_leaves_the_finding_in_the_comment(client, r
 def test_without_any_opinion_the_comment_has_no_ai_wording(client, run, db, fake):
     send(client, run, [finding()])
     comment = finish(client, run)
-    assert "🤖" not in comment and triage.TRIAGE_NOTE not in comment
+    assert "AI opinion" not in comment and triage.TRIAGE_NOTE not in comment
 
 
 def test_a_hostile_reason_cannot_break_out_of_the_comment(client, run, db, fake):
@@ -238,9 +238,9 @@ def test_a_hostile_reason_cannot_break_out_of_the_comment(client, run, db, fake)
     fake.reply = '{"verdict": "likely_real", "reason": "`<img src=x onerror=1>` [x](http://e.vil) @everyone"}'
     ask(client, run, [item(f)])
     comment = finish(client, run)
-    line = [l for l in comment.splitlines() if "AI:" in l][0]
+    line = [l for l in comment.splitlines() if "AI opinion:" in l][0]
     # The whole reason sits inside exactly one code span, so nothing in it is rendered as markup.
-    assert re.search(r" · 🤖 AI: looks real \(`[^`]*`\)$", line)
+    assert re.search(r" · AI opinion: looks real \(`[^`]*`\)$", line)
     assert "@everyone" in line and line.count("`") == 10
 
 

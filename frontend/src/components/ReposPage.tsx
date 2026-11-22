@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { addRepo, deleteRepo, listRepos, type Repo } from "../lib/api";
+import { readCache, writeCache } from "../lib/cache";
 import RepoPanel from "./RepoPanel";
+import { Skeleton } from "./ui";
 
-export default function ReposPage() {
-  const [repos, setRepos] = useState<Repo[] | null>(null);
+export default function ReposPage({ ready, userId }: { ready: boolean; userId: string }) {
+  const cacheKey = `repos.${userId}`;
+  // Show last time's list straight away, then replace it with the fresh one.
+  const [repos, setRepos] = useState<Repo[] | null>(() => readCache<Repo[]>(cacheKey));
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -13,16 +18,18 @@ export default function ReposPage() {
 
   const load = useCallback(async () => {
     try {
-      setRepos(await listRepos());
+      const fresh = await listRepos();
+      setRepos(fresh);
+      writeCache(cacheKey, fresh);
       setLoadError(null);
     } catch (e) {
       setLoadError((e as Error).message);
     }
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (ready) void load();
+  }, [ready, load]);
 
   async function onAdd(event: FormEvent) {
     event.preventDefault();
@@ -32,6 +39,7 @@ export default function ReposPage() {
       await addRepo(name.trim());
       setName("");
       setAgree(false);
+      setAdding(false);
       await load();
     } catch (e) {
       setFormError((e as Error).message);
@@ -52,59 +60,76 @@ export default function ReposPage() {
 
   return (
     <>
-      <section className="card">
-        <h2>Add a repository</h2>
-        <form onSubmit={onAdd}>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="owner/name or a GitHub link"
-            aria-label="Repository"
-          />
-          <label className="check">
-            <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-            <span>
-              I agree that this repository&apos;s code is sent to AI services (Groq, Gemini) to
-              generate tests and explain findings.
-            </span>
-          </label>
-          <button className="primary" disabled={busy || !agree || name.trim() === ""}>
-            {busy ? "Checking…" : "Add repository"}
-          </button>
-          {formError && <p className="error">{formError}</p>}
-        </form>
-        <p className="muted small">Public repositories only.</p>
-      </section>
+      <div className="page-head">
+        <div>
+          <h1>Repositories</h1>
+          <p className="muted">Public Python repositories checked on every push and pull request.</p>
+        </div>
+        <button className={adding ? "" : "primary"} onClick={() => setAdding(!adding)}>
+          {adding ? "Cancel" : "Add repository"}
+        </button>
+      </div>
 
-      <section className="card">
-        <h2>Your repositories</h2>
-        {loadError && <p className="error">{loadError}</p>}
-        {repos === null && !loadError && <p className="muted">Loading…</p>}
-        {repos?.length === 0 && <p className="muted">None yet. Add one above.</p>}
-        <ul className="repos">
-          {repos?.map((repo) => (
-            <li key={repo.id}>
-              <div className="row">
-                <div>
-                  <a href={`https://github.com/${repo.full_name}`} target="_blank" rel="noreferrer">
-                    {repo.full_name}
-                  </a>
-                  <span className="muted small"> · branch {repo.default_branch}</span>
-                </div>
-                <div className="actions">
-                  <button onClick={() => setOpenId(openId === repo.id ? null : repo.id)}>
-                    {openId === repo.id ? "Hide" : "Runs and setup"}
-                  </button>
-                  <button className="danger" onClick={() => onDelete(repo)}>
-                    Remove
-                  </button>
-                </div>
+      {adding && (
+        <section className="card">
+          <form onSubmit={onAdd}>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="owner/name or a GitHub link"
+              aria-label="Repository"
+              autoFocus
+            />
+            <label className="check">
+              <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+              <span>
+                I agree that this repository&apos;s code is sent to AI services (Groq, Gemini) to
+                generate tests and explain findings.
+              </span>
+            </label>
+            <div className="actions">
+              <button className="primary" disabled={busy || !agree || name.trim() === ""}>
+                {busy ? "Checking…" : "Add repository"}
+              </button>
+            </div>
+            {formError && <p className="error">{formError}</p>}
+          </form>
+          <p className="muted small" style={{ marginTop: 12 }}>Public repositories only.</p>
+        </section>
+      )}
+
+      {loadError && <p className="error">{loadError}</p>}
+      {repos === null && !loadError && (
+        <section className="card"><Skeleton lines={3} /></section>
+      )}
+      {repos?.length === 0 && (
+        <section className="card">
+          <p className="muted" style={{ margin: 0 }}>No repositories yet. Use “Add repository” to connect one.</p>
+        </section>
+      )}
+      <ul className="repos">
+        {repos?.map((repo) => (
+          <li key={repo.id}>
+            <div className="repo-head">
+              <div>
+                <a className="repo-name" href={`https://github.com/${repo.full_name}`} target="_blank" rel="noreferrer">
+                  {repo.full_name}
+                </a>
+                <span className="muted small"> · branch {repo.default_branch}</span>
               </div>
-              {openId === repo.id && <RepoPanel repo={repo} />}
-            </li>
-          ))}
-        </ul>
-      </section>
+              <div className="actions">
+                <button onClick={() => setOpenId(openId === repo.id ? null : repo.id)}>
+                  {openId === repo.id ? "Hide" : "Open"}
+                </button>
+                <button className="danger" onClick={() => onDelete(repo)}>
+                  Remove
+                </button>
+              </div>
+            </div>
+            {openId === repo.id && <RepoPanel repo={repo} />}
+          </li>
+        ))}
+      </ul>
     </>
   );
 }

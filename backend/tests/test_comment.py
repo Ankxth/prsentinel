@@ -164,3 +164,21 @@ def test_only_plain_web_addresses_become_links():
     for bad in ["", None, "javascript:alert(1)", "ftp://a.b", "https://a b", "https://a.b/x)[y](z",
                 "https://a.b/<img>", "//a.b", "a.b"]:
         assert dashboard_link(bad, rid) is None
+
+
+def test_cases_of_one_parametrized_test_share_one_line_and_no_emoji_is_used():
+    from types import SimpleNamespace
+
+    from app.services import classifier as c
+    from app.services.comment import _grouped_lines
+
+    def case(name, label):
+        return SimpleNamespace(test_name=name, label=label, diagnosis=None, after_result="passed",
+                               before_result="passed", message=None, rerun_passes=0, rerun_fails=0)
+
+    tests = [case("test_r[1-2]", c.NO_SIGNAL), case("test_r[2-3]", c.ODD), case("test_r[3-4]", c.ODD),
+             case("test_other", c.NO_SIGNAL)]
+    lines = _grouped_lines(tests)
+    assert len(lines) == 2
+    assert "`test_r` (3 cases): 1 found no difference, 2 match the new behaviour" in lines[0]
+    assert all(ord(ch) < 0x2000 for line in lines for ch in line)

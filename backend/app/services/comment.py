@@ -25,7 +25,7 @@ MAX_FUNCTIONS_SHOWN = 15  # functions shown with test results
 MAX_TESTS_SHOWN = 8  # tests listed inside one function's details
 MAX_COMMENT_CHARS = 60_000  # GitHub refuses comments above 65,536
 MAX_FINDINGS_SHOWN = 10  # scanner findings listed in the comment (all are on the dashboard)
-SEVERITY_ICON = {"high": "🔴", "medium": "🟠", "low": "🟡", "unknown": "⚪"}
+SEVERITY_LABEL = {"high": "High", "medium": "Medium", "low": "Low", "unknown": "Unrated"}
 AI_NOTE = "Tests are AI-generated. A catching test is a hint, not proof."
 
 
@@ -110,6 +110,46 @@ def _test_line(test: FunctionTestResult) -> str:
     return line
 
 
+def _base_name(name: str) -> str:
+    """test_x[1-2-3] -> test_x (parametrized cases belong to one test)."""
+    return name.split("[", 1)[0]
+
+
+def _grouped_lines(tests: list[FunctionTestResult]) -> list[str]:
+    """One line per test; the cases of a parametrized test share one line with counts."""
+    order: list[str] = []
+    groups: dict[str, list[FunctionTestResult]] = {}
+    for t in tests:
+        base = _base_name(t.test_name)
+        if base not in groups:
+            order.append(base)
+            groups[base] = []
+        groups[base].append(t)
+    lines = []
+    for base in order:
+        members = groups[base]
+        if len(members) == 1 and members[0].test_name == base:
+            lines.append(_test_line(members[0]))
+            continue
+        counts: dict[str, int] = {}
+        for t in members:
+            counts[_kind(t)] = counts.get(_kind(t), 0) + 1
+        words = {
+            "catches": "catch a change",
+            "flaky": "unstable",
+            "odd": "match the new behaviour",
+            "unreliable": "unreliable",
+            "new_fails": "fail on a new function",
+            "same": "found no difference",
+        }
+        detail = ", ".join(f"{n} {words[k]}" for k, n in counts.items())
+        lines.append(f"- {_code(base, 100)} ({len(members)} cases): {detail}")
+        for t in members:
+            if _kind(t) in ("catches", "flaky", "new_fails", "unreliable") and t.message and _fails_now(t):
+                lines.append(f"  - failure in {_code(t.test_name, 80)}: {_code(t.message, 160)}")
+    return lines
+
+
 def _repair_note(tests: list[FunctionTestResult]) -> list[str]:
     rounds = max((t.attempt for t in tests), default=0)
     if not rounds:
@@ -164,17 +204,17 @@ def _function_summary(tests: list[FunctionTestResult]) -> str:
     if counts.get("catches"):
         n = counts["catches"]
         verb = "catches" if n == 1 else "catch"
-        parts.append(f"⚠️ <b>{_plural(n, 'test')} {verb} a change</b>")
+        parts.append(f"<b>{_plural(n, 'test')} {verb} a change</b>")
     if counts.get("flaky"):
-        parts.append(f"🎲 {_plural(counts['flaky'], 'unstable test')}")
+        parts.append(f"{_plural(counts['flaky'], 'unstable test')}")
     if counts.get("odd"):
-        parts.append(f"🔄 {_plural(counts['odd'], 'test')} match the new behaviour")
+        parts.append(f"{_plural(counts['odd'], 'test')} match the new behaviour")
     if counts.get("unreliable"):
-        parts.append(f"❓ {_plural(counts['unreliable'], 'unreliable test')}")
+        parts.append(f"{_plural(counts['unreliable'], 'unreliable test')}")
     if counts.get("new_fails"):
-        parts.append(f"❓ {_plural(counts['new_fails'], 'failing test')} on a new function")
+        parts.append(f"{_plural(counts['new_fails'], 'failing test')} on a new function")
     if counts.get("same"):
-        parts.append(f"➖ {_plural(counts['same'], 'test')} found no difference")
+        parts.append(f"{_plural(counts['same'], 'test')} found no difference")
     return " · ".join(parts)
 
 
@@ -182,24 +222,25 @@ def _function_block(row: RunFunction, tests: list[FunctionTestResult]) -> list[s
     title = f"{_code(row.file + '::' + row.name)} ({_code(row.change_type, 20)})"
     html_title = f"{_html_code(row.file + '::' + row.name)} ({_html_code(row.change_type, 20)})"
     if row.status == "tested" and tests:
-        shown = tests[:MAX_TESTS_SHOWN]
+        grouped = _grouped_lines(tests)
+        shown = grouped[:MAX_TESTS_SHOWN + 8]
         lines = [
             "<details>",
             f"<summary>{html_title}: {_function_summary(tests)}</summary>",
             "",
             *_repair_note(tests),
-            *[_test_line(t) for t in shown],
+            *shown,
         ]
-        if len(tests) > len(shown):
-            lines.append(f"- … and {len(tests) - len(shown)} more")
+        if len(grouped) > len(shown):
+            lines.append(f"- … and {len(grouped) - len(shown)} more lines")
         lines += [""]
         lines += _mutation_lines(row)
         lines += ["</details>", ""]
         return lines
     if row.status in ("skipped", "could_not_generate", "could_not_test"):
         reason = row.reason or "no reason was given"
-        return [f"- {title}: ⏭️ **not tested**: {_code(reason, 200)}", ""]
-    return [f"- {title}: ⏭️ **no test result was reported**", ""]
+        return [f"- {title}: **not tested**: {_code(reason, 200)}", ""]
+    return [f"- {title}: **no test result was reported**", ""]
 
 
 def _tested_section(rows: list[RunFunction], tests: list[FunctionTestResult]) -> list[str]:
@@ -230,16 +271,15 @@ def _triage_text(f) -> str:
     if not text:
         return ""
     reason = f" ({_code(f.triage_reason, 200)})" if f.triage_reason else ""
-    return f" · 🤖 AI: {text}{reason}"
+    return f" · AI opinion: {text}{reason}"
 
 
 def _proof_text(f) -> str:
     """What the proof agent found out about a finding (E3). 'Not tried' is not shown."""
     if f.proof_status not in ("verified", "not_reproduced", "needs_review"):
         return ""
-    icon = {"verified": "🧪", "not_reproduced": "❔", "needs_review": "⚠️"}[f.proof_status]
     reason = f" ({_code(f.proof_reason, 200)})" if f.proof_reason else ""
-    return f" · {icon} {PROOF_LABELS[f.proof_status]}{reason}"
+    return f" · Test run: {PROOF_LABELS[f.proof_status]}{reason}"
 
 
 def _proof_detail(f) -> list[str]:
@@ -248,7 +288,7 @@ def _proof_detail(f) -> list[str]:
         return []
     lines = []
     if f.proof_explanation:
-        lines.append(f"  - 🤖 AI explanation: {_code(f.proof_explanation, 500)}")
+        lines.append(f"  - AI explanation: {_code(f.proof_explanation, 500)}")
     lines.append(f"  - Next step: {_code(NEXT_STEP, 300)}")
     return lines
 
@@ -271,7 +311,7 @@ def _security_section(run: Run, db: Session) -> list[str]:
             parts.append(f"{tool} ran{note}")
         else:
             reason = _code(s.get("reason") or "no reason was given", 150)
-            parts.append(f"⚠️ {tool} **could not run** ({reason})")
+            parts.append(f"{tool} **could not run** ({reason})")
     if parts:
         lines += ["Scanners: " + " · ".join(parts), ""]
 
@@ -303,9 +343,9 @@ def _security_section(run: Run, db: Session) -> list[str]:
         where = f.file or "?"
         if f.line:
             where += f":{f.line}"
-        icon = SEVERITY_ICON.get(f.severity, "⚪")
+        label = SEVERITY_LABEL.get(f.severity, "Unrated")
         lines.append(
-            f"- {icon} {_code(f.rule_id, 60)} ({_code(f.tool, 20)}, {f.severity}) in "
+            f"- **{label}** {_code(f.rule_id, 60)} ({_code(f.tool, 20)}) in "
             f"{_code(where, 150)}: {_code(f.message, 200)}"
             + _triage_text(f)
             + _proof_text(f)
@@ -355,12 +395,12 @@ def build_comment(
 
     if run.status == "could_not_run":
         reason = summary.get("reason") or "no reason was given"
-        lines.append(f"⚠️ **Could not run:** {_code(reason, 200)}")
+        lines.append(f"**Could not run:** {_code(reason, 200)}")
         lines.append("")
         lines.append("This is **not** a pass. Nothing was checked in this run.")
     elif run.status == "failed":
         reason = summary.get("reason") or "no reason was given"
-        lines.append(f"❌ **The run failed:** {_code(reason, 200)}")
+        lines.append(f"**The run failed:** {_code(reason, 200)}")
     elif not functions and not rows:
         lines.append("No changed Python functions were found in this commit. Nothing to check.")
     else:

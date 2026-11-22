@@ -101,6 +101,8 @@ export type Run = {
   };
 };
 
+export const getRun = (runId: string) => apiFetch<Run>(`/v1/runs/${runId}`);
+
 export const listRuns = (repoId: string) => apiFetch<Run[]>(`/v1/repos/${repoId}/runs`);
 
 export type TestView = {
@@ -142,6 +144,7 @@ export type RunFunctionView = {
   counts: Record<string, number>;
   repair_rounds: number;
   tests: TestView[];
+  test_code: string | null;
   mutation: MutationView | null;
 };
 

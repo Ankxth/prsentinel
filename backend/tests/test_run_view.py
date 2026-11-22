@@ -2,6 +2,8 @@
 generated test code."""
 import uuid
 
+from sqlalchemy import select
+
 from app.db.models.accounts import User
 from app.db.models.run_functions import RunFunction
 from tests.conftest import bearer
@@ -95,10 +97,14 @@ def test_a_function_never_reported_has_no_mutation(client, run, db, make_token):
     assert fn(view(client, run, db, make_token), "price")["mutation"] is None
 
 
-def test_the_generated_test_code_is_never_sent(client, run, db, make_token):
+def test_the_generated_test_code_is_sent_to_the_owner_and_capped(client, run, db, make_token):
     post(client, run, [t("test_a", "passed", "passed")])
-    response = client.get(f"/v1/runs/{run.id}/functions", headers=owner_headers(db, make_token))
-    assert "def test_x" not in response.text and "test_code" not in response.text
+    row = db.scalar(select(RunFunction).where(RunFunction.run_id == uuid.UUID(str(run.id))))
+    row.test_code = "def test_x():\n    pass\n" + "#" * 30000
+    db.commit()
+    data = fn(view(client, run, db, make_token), "price")
+    assert data["test_code"].startswith("def test_x")
+    assert len(data["test_code"]) == 20000
 
 
 def test_long_failure_text_is_cut(client, run, db, make_token):

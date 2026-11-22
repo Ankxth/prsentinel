@@ -1,8 +1,8 @@
 """What the dashboard run page shows: the same per-function results as the PR comment, as data.
 
 It reuses the comment's own rules (`_latest_attempt`, `_kind`) so the page and the comment can
-never disagree. It never includes the generated test code, only names, results, labels,
-diagnoses and short failure texts. Everything that came from the repo is untrusted: the page
+never disagree. It includes the generated test code (capped) so the owner can see which tests ran, plus names,
+results, labels, diagnoses and short failure texts. Everything that came from the repo is untrusted: the page
 shows it as plain text.
 """
 
@@ -14,6 +14,7 @@ from app.db.models.runs import Run
 from app.services.comment import AI_NOTE, _kind, _latest_attempt
 
 MAX_MESSAGE_CHARS = 500
+MAX_TEST_CODE_CHARS = 20000
 MAX_SURVIVORS = 5
 KINDS = ("catches", "flaky", "odd", "unreliable", "new_fails", "same")
 
@@ -75,6 +76,7 @@ def _function(row: RunFunction, all_tests: list[FunctionTestResult]) -> dict:
         "counts": counts,
         "repair_rounds": max((t.attempt for t in all_tests), default=0),
         "tests": [_test(t) for t in tests] if shown else [],
+        "test_code": (row.test_code or "")[:MAX_TEST_CODE_CHARS] or None if shown else None,
         "mutation": _mutation(row) if shown else None,
     }
 

@@ -313,12 +313,11 @@ and only the owner's runs are visible (others get 404).
 
 `GET /v1/runs/{id}/functions` (D8, the dashboard run page) returns the same per-function facts as the PR comment:
 `{run_id, status, reason, ai_note, functions: [{id, file, name, change_type, status, reason, counts, repair_rounds,
-tests: [{name, kind, label, diagnosis, before, after, rerun_passes, rerun_fails, message}], mutation}]}`.
+tests: [{name, kind, label, diagnosis, before, after, rerun_passes, rerun_fails, message}], test_code, mutation}]}`.
 `kind` is the comment's bucket (`catches` | `flaky` | `odd` | `unreliable` | `new_fails` | `same`); only the newest
 repair round is listed; `mutation` is `null` (never reported), `{status: "not_measured", reason}` or
 `{status: "measured", killed, survived, percent, equivalent, could_not_run, capped, stopped_early, survivors, note}`.
-A function marked tested with no result rows is shown as `could_not_test`, never as tested. The generated test
-code is never sent, and failure texts are cut to 500 characters and are untrusted text. Owner-only (404 for anyone
+A function marked tested with no result rows is shown as `could_not_test`, never as tested. `test_code` is the newest generated test file (cut to 20000 characters, `null` if not tested) so the owner can see which tests ran; failure texts are cut to 500 characters and are untrusted text. Owner-only (404 for anyone
 else); a run token does not open it. The page asks again every few seconds while `status` is `running`.
 
 `GET /v1/runs/{id}/findings` (E1, the dashboard run page) returns what the scanners reported, in full:
